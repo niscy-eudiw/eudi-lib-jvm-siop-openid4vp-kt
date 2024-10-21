@@ -70,15 +70,15 @@ class DefaultDispatcherTest {
 
         val CLIENT = Client.Preregistered("https://client.example.org", "Verifier")
 
-        val jarmEncryptionKeyPair: ECKey = ECKeyGenerator(Curve.P_256)
+        val jarmEncryptionECKeyPair: ECKey = ECKeyGenerator(Curve.P_256)
             .keyUse(KeyUse.ENCRYPTION)
             .algorithm(JWEAlgorithm.ECDH_ES)
             .keyID("123")
             .generate()
 
         val metaDataRequestingEncryptedResponse = UnvalidatedClientMetaData(
-            jwks = JWKSet(jarmEncryptionKeyPair).toJsonObject(true),
-            authorizationEncryptedResponseAlg = jarmEncryptionKeyPair.algorithm.name,
+            jwks = JWKSet(jarmEncryptionECKeyPair).toJsonObject(true),
+            authorizationEncryptedResponseAlg = jarmEncryptionECKeyPair.algorithm.name,
             authorizationEncryptedResponseEnc = EncryptionMethod.A256GCM.name,
         )
 
@@ -91,7 +91,7 @@ class DefaultDispatcherTest {
 
         fun String.assertIsJwtEncryptedWithVerifiersPubKey(): EncryptedJWT {
             val jwt = assertDoesNotThrow { EncryptedJWT.parse(this) }
-            val rsaDecrypter = ECDHDecrypter(jarmEncryptionKeyPair)
+            val rsaDecrypter = ECDHDecrypter(jarmEncryptionECKeyPair)
             jwt.decrypt(rsaDecrypter)
             return jwt
         }
@@ -113,9 +113,10 @@ class DefaultDispatcherTest {
 
         val config = SiopOpenId4VPConfig(
             supportedClientIdSchemes = listOf(SupportedClientIdScheme.X509SanDns.NoValidation),
-            jarmConfiguration = JarmConfiguration.SigningAndEncryption(
-                signer = JarmSigner(jarmSigningKeyPair),
-                supportedEncryptionAlgorithms = listOf(Verifier.jarmEncryptionKeyPair.algorithm as JWEAlgorithm),
+            jarmConfiguration = JarmConfiguration.Supported(
+                signer = SignerWithKeyId(jarmSigningKeyPair),
+                keyGenerationConfig = KeyGenerationConfig.ecOnly(Verifier.jarmEncryptionECKeyPair.curve),
+                supportedEncryptionAlgorithms = JWEAlgorithm.Family.ECDH_ES.toList(),
                 supportedEncryptionMethods = listOf(EncryptionMethod.A256GCM),
             ),
             vpConfiguration = VPConfiguration(

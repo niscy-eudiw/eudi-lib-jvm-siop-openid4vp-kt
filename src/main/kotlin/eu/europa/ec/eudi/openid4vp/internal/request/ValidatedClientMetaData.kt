@@ -104,24 +104,26 @@ internal fun SiopOpenId4VPConfig.jarmRequirement(metaData: ValidatedClientMetaDa
 @Throws(AuthorizationRequestException::class)
 internal fun JarmConfiguration.jarmRequirement(metaData: ValidatedClientMetaData): JarmRequirement? {
     val signed = metaData.authorizationSignedResponseAlg?.let { alg ->
-        val signingCfg = signingConfig()
-        ensure(signingCfg != null) {
+        val jarmSigningCapability = signingCapability()
+        ensure(jarmSigningCapability != null) {
             UnsupportedClientMetaData("Wallet doesn't support signed JARM").asException()
         }
-        ensure(alg in signingCfg.signer.supportedJWSAlgorithms()) {
+        ensure(alg in jarmSigningCapability.supportedAlgorithms) {
             UnsupportedClientMetaData("Wallet doesn't support $alg ").asException()
         }
         JarmRequirement.Signed(alg)
     }
     val encrypted = metaData.authorizationEncryptedResponseAlg?.let { alg ->
-        val encryptionCfg = encryptionConfig()
-        ensure(encryptionCfg != null) { UnsupportedClientMetaData("Wallet doesn't support encrypted JARM").asException() }
-        ensure(alg in encryptionCfg.supportedAlgorithms) {
-            UnsupportedClientMetaData("Wallet doesn't support $alg ").asException()
+        val jarmEncryptionCapability = encryptionCapability()
+        ensure(jarmEncryptionCapability != null) {
+            UnsupportedClientMetaData("Wallet doesn't support encrypted JARM").asException()
+        }
+        ensure(alg in jarmEncryptionCapability.supportedAlgorithms) {
+            UnsupportedClientMetaData("Wallet doesn't support $alg encryption algorithm").asException()
         }
         metaData.authorizationEncryptedResponseEnc?.let { enc ->
-            ensure(enc in encryptionCfg.supportedMethods) {
-                UnsupportedClientMetaData("Wallet doesn't support $enc ").asException()
+            ensure(enc in jarmEncryptionCapability.supportedEncMethods) {
+                UnsupportedClientMetaData("Wallet doesn't support $enc encryption method").asException()
             }
             metaData.jwkSet?.let { set -> JarmRequirement.Encrypted(alg, enc, set) }
         }

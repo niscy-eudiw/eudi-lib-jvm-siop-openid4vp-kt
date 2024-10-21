@@ -50,9 +50,10 @@ class AuthorizationResponseBuilderTest {
 
         val config = SiopOpenId4VPConfig(
             supportedClientIdSchemes = listOf(SupportedClientIdScheme.X509SanDns.NoValidation),
-            jarmConfiguration = JarmConfiguration.Encryption(
-                supportedAlgorithms = listOf(JWEAlgorithm.ECDH_ES),
+            jarmConfiguration = JarmConfiguration.encryptionOnly(
+                supportedAlgorithms = JWEAlgorithm.Family.ECDH_ES.toList(),
                 supportedMethods = listOf(EncryptionMethod.A256GCM),
+                keyGenerationConfig = KeyGenerationConfig.ecOnly(DefaultDispatcherTest.Verifier.jarmEncryptionECKeyPair.curve),
             ),
             vpConfiguration = VPConfiguration(
                 vpFormats = VpFormats(VpFormat.MsoMdoc, VpFormat.SdJwtVc.ES256),

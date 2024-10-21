@@ -226,3 +226,63 @@ sealed interface JarmRequirement : Serializable {
      */
     data class SignedAndEncrypted(val signed: Signed, val encryptResponse: Encrypted) : JarmRequirement
 }
+
+sealed interface JwtSigningEncryptionCapability : Serializable {
+
+    data class Signing(
+        val supportedAlgorithms: List<JWSAlgorithm>,
+        val signer: SignerWithKeyId? = null,
+    ) : JwtSigningEncryptionCapability {
+
+        init {
+            require(supportedAlgorithms.isNotEmpty()) { "Signing algorithms must not be empty" }
+            signer?.apply {
+                require(supportedJWSAlgorithms().all { alg -> alg in supportedAlgorithms }) {
+                    "Signer's supported algorithms must be of the supported algorithms set"
+                }
+            }
+        }
+    }
+
+    data class Encryption(
+        val supportedAlgorithms: List<JWEAlgorithm>,
+        val supportedEncMethods: List<EncryptionMethod>,
+        val keyGenerationConfig: KeyGenerationConfig?,
+        // TODO: Should add an encryptor interface place holder for externalizing cryptographic operations ??
+    ) : JwtSigningEncryptionCapability {
+
+        init {
+            require(supportedAlgorithms.isNotEmpty()) { "Encryption algorithms must not be empty" }
+            require(supportedEncMethods.isNotEmpty()) { "Encryption methods must not be empty" }
+            keyGenerationConfig?.apply {
+                ecConfig?.let {
+                    require(it.supportedJWEAlgorithms.all { alg -> alg in supportedAlgorithms }) {
+                        "EC key generation algorithms must be of the supported encryption algorithms"
+                    }
+                }
+                rsaConfig?.let {
+                    require(it.supportedJWEAlgorithms.all { alg -> alg in supportedAlgorithms }) {
+                        "RSA key generation algorithms must be of the supported encryption algorithms"
+                    }
+                }
+            }
+        }
+    }
+
+    data class SigningAndEncryption(
+        val signing: Signing,
+        val encryption: Encryption,
+    ) : JwtSigningEncryptionCapability
+}
+
+fun JwtSigningEncryptionCapability.encryptionCapability(): JwtSigningEncryptionCapability.Encryption? = when (this) {
+    is JwtSigningEncryptionCapability.Encryption -> this
+    is JwtSigningEncryptionCapability.Signing -> null
+    is JwtSigningEncryptionCapability.SigningAndEncryption -> encryption
+}
+
+fun JwtSigningEncryptionCapability.signingCapability(): JwtSigningEncryptionCapability.Signing? = when (this) {
+    is JwtSigningEncryptionCapability.Encryption -> null
+    is JwtSigningEncryptionCapability.Signing -> this
+    is JwtSigningEncryptionCapability.SigningAndEncryption -> signing
+}

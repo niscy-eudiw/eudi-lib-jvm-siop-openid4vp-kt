@@ -62,14 +62,18 @@ private fun SiopOpenId4VPConfig.sign(
     requirement: JarmRequirement.Signed,
     data: AuthorizationResponsePayload,
 ): SignedJWT {
-    val signingCfg = jarmConfiguration.signingConfig()
+    check(jarmConfiguration is JarmConfiguration.Supported) {
+        "Wallet doesn't support sending responses using JARM"
+    }
+    val signingCfg = jarmConfiguration.signingCapability()
     checkNotNull(signingCfg) { "Wallet doesn't support signing JARM" }
+    checkNotNull(signingCfg.signer) { "No JARM response signer configured" }
 
     val header = JWSHeader.Builder(requirement.responseSigningAlg)
         .keyID(signingCfg.signer.getKeyId())
         .build()
 
-    val claimSet = JwtPayloadFactory.signedJwtClaimSet(data, issuer, Instant.now(), signingCfg.ttl)
+    val claimSet = JwtPayloadFactory.signedJwtClaimSet(data, issuer, Instant.now(), jarmConfiguration.jarmJwtTTL)
     return SignedJWT(header, claimSet).apply { sign(signingCfg.signer) }
 }
 
@@ -77,7 +81,10 @@ private fun SiopOpenId4VPConfig.encrypt(
     requirement: JarmRequirement.Encrypted,
     data: AuthorizationResponsePayload,
 ): EncryptedJWT {
-    val encryptionCfg = jarmConfiguration.encryptionConfig()
+    check(jarmConfiguration is JarmConfiguration.Supported) {
+        "Wallet doesn't support sending responses using JARM"
+    }
+    val encryptionCfg = jarmConfiguration.encryptionCapability()
     checkNotNull(encryptionCfg) { "Wallet doesn't support encrypted JARM" }
 
     val (jweAlgorithm, encryptionMethod, encryptionKeySet) = requirement
@@ -113,7 +120,10 @@ private fun SiopOpenId4VPConfig.signAndEncrypt(
     requirement: JarmRequirement.SignedAndEncrypted,
     data: AuthorizationResponsePayload,
 ): JWEObject {
-    check(jarmConfiguration is JarmConfiguration.SigningAndEncryption) {
+    check(jarmConfiguration is JarmConfiguration.Supported) {
+        "Wallet doesn't support sending responses using JARM"
+    }
+    check(jarmConfiguration.signEncryptCapability is JwtSigningEncryptionCapability.SigningAndEncryption) {
         "Wallet doesn't support signing & encrypting JARM"
     }
 

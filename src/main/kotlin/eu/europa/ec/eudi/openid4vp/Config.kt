@@ -18,10 +18,13 @@ package eu.europa.ec.eudi.openid4vp
 import com.nimbusds.jose.*
 import com.nimbusds.jose.crypto.ECDSASigner
 import com.nimbusds.jose.crypto.RSASSASigner
+import com.nimbusds.jose.jwk.Curve
 import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.RSAKey
 import com.nimbusds.oauth2.sdk.id.Issuer
 import eu.europa.ec.eudi.openid4vp.JarmConfiguration.*
+import eu.europa.ec.eudi.openid4vp.JwtSigningEncryptionCapability.Encryption
+import eu.europa.ec.eudi.openid4vp.JwtSigningEncryptionCapability.Signing
 import eu.europa.ec.eudi.openid4vp.SiopOpenId4VPConfig.Companion.SelfIssued
 import eu.europa.ec.eudi.prex.PresentationDefinition
 import kotlinx.serialization.json.JsonObject
@@ -174,6 +177,7 @@ value class VpFormats(val values: List<VpFormat>) {
         private enum class FormatName {
             MSO_MDOC, SD_JWT_VC
         }
+
         private fun VpFormat.formatName() = when (this) {
             VpFormat.MsoMdoc -> FormatName.MSO_MDOC
             is VpFormat.SdJwtVc -> FormatName.SD_JWT_VC
@@ -196,24 +200,24 @@ data class VPConfiguration(
     val vpFormats: VpFormats,
 )
 
-interface JarmSigner : JWSSigner {
+interface SignerWithKeyId : JWSSigner {
     fun getKeyId(): String
 
     companion object {
-        operator fun invoke(rsaKey: RSAKey): JarmSigner =
-            object : JarmSigner, JWSSigner by RSASSASigner(rsaKey) {
+        operator fun invoke(rsaKey: RSAKey): SignerWithKeyId =
+            object : SignerWithKeyId, JWSSigner by RSASSASigner(rsaKey) {
                 override fun getKeyId(): String = rsaKey.keyID
             }
 
-        operator fun invoke(rsaKey: ECKey): JarmSigner =
-            object : JarmSigner, JWSSigner by ECDSASigner(rsaKey) {
+        operator fun invoke(rsaKey: ECKey): SignerWithKeyId =
+            object : SignerWithKeyId, JWSSigner by ECDSASigner(rsaKey) {
                 override fun getKeyId(): String = rsaKey.keyID
             }
     }
 }
 
 /**
- * Configurations options for encrypting and/or signing an authorization response via JARM,
+ * Configurations options  for encrypting and/or signing an authorization response via JARM,
  * if requested by the verifier.
  *
  * The library can be configured to:
@@ -228,51 +232,29 @@ interface JarmSigner : JWSSigner {
 sealed interface JarmConfiguration {
 
     /**
-     * The wallet supports only signed authorization responses
-     *
-     * @param signer the JWS algorithms that the wallet can use when signing a JARM response
-     * @param ttl the time the signed authorization response can live
+     * Wallet supports replying using JARM with signing and/or encryption capabilities
      */
-    data class Signing(
-        val signer: JarmSigner,
-        val ttl: Duration? = Duration.ofMinutes(10),
+    data class Supported(
+        val signEncryptCapability: JwtSigningEncryptionCapability,
+        val jarmJwtTTL: Duration? = Duration.ofMinutes(10),
     ) : JarmConfiguration {
-        init {
-            require(signer.supportedJWSAlgorithms().isNotEmpty()) { "At least a algorithm must be provided" }
-        }
-    }
 
-    /**
-     * The wallet supports only encrypted authorization responses
-     * @param supportedAlgorithms the JWE algorithms that the wallet can use when encrypting a JARM response
-     * @param supportedMethods the JWE encryption methods that the wallet can use when encrypting a JARM
-     * response
-     */
-    data class Encryption(
-        val supportedAlgorithms: List<JWEAlgorithm>,
-        val supportedMethods: List<EncryptionMethod>,
-    ) : JarmConfiguration {
         init {
-            require(supportedAlgorithms.isNotEmpty()) { "At least an encryption algorithm must be provided" }
-            require(supportedMethods.isNotEmpty()) { "At least an encryption method must be provided" }
+            signEncryptCapability.signingCapability()?.apply {
+                requireNotNull(signer) { "JARM configuration with signing capabilities must have a JWT Signer defined" }
+            }
         }
-    }
-
-    /**
-     * The wallet supports any kind of JARM response, signed, encrypted and/or signed and then encrypted
-     *
-     * @param signing the singing options
-     * @param encryption the encryption options
-     */
-    data class SigningAndEncryption(val signing: Signing, val encryption: Encryption) : JarmConfiguration {
 
         constructor(
-            signer: JarmSigner,
+            signer: SignerWithKeyId,
+            keyGenerationConfig: KeyGenerationConfig,
             supportedEncryptionAlgorithms: List<JWEAlgorithm>,
             supportedEncryptionMethods: List<EncryptionMethod>,
         ) : this(
-            Signing(signer),
-            Encryption(supportedEncryptionAlgorithms, supportedEncryptionMethods),
+            JwtSigningEncryptionCapability.SigningAndEncryption(
+                Signing(signer.supportedJWSAlgorithms().toList(), signer),
+                Encryption(supportedEncryptionAlgorithms, supportedEncryptionMethods, keyGenerationConfig),
+            ),
         )
     }
 
@@ -280,19 +262,38 @@ sealed interface JarmConfiguration {
      * Wallet doesn't support replying using JARM
      */
     data object NotSupported : JarmConfiguration
+
+    companion object {
+        fun encryptionOnly(
+            supportedAlgorithms: List<JWEAlgorithm>,
+            supportedMethods: List<EncryptionMethod>,
+            keyGenerationConfig: KeyGenerationConfig?,
+        ): Supported = Supported(
+            signEncryptCapability =
+                Encryption(
+                    supportedAlgorithms = supportedAlgorithms,
+                    supportedEncMethods = supportedMethods,
+                    keyGenerationConfig = keyGenerationConfig,
+                ),
+        )
+
+        fun signingOnly(signer: SignerWithKeyId): Supported = Supported(
+            signEncryptCapability =
+                Signing(
+                    supportedAlgorithms = signer.supportedJWSAlgorithms().toList(),
+                    signer = signer,
+                ),
+        )
+    }
 }
 
-fun JarmConfiguration.signingConfig(): Signing? = when (this) {
-    is Signing -> this
-    is Encryption -> null
-    is SigningAndEncryption -> signing
+fun JarmConfiguration.signingCapability(): Signing? = when (this) {
+    is Supported -> signEncryptCapability.signingCapability()
     NotSupported -> null
 }
 
-fun JarmConfiguration.encryptionConfig(): Encryption? = when (this) {
-    is Signing -> null
-    is Encryption -> this
-    is SigningAndEncryption -> encryption
+fun JarmConfiguration.encryptionCapability(): Encryption? = when (this) {
+    is Supported -> signEncryptCapability.encryptionCapability()
     NotSupported -> null
 }
 
@@ -381,30 +382,101 @@ sealed interface SupportedRequestUriMethods {
 }
 
 /**
- * Options related to JWT-Secured authorization requests
+ * Options related to JWT-Secured authorization requests. Mandatory is to define the singing algorithms supported.
  *
- * @param supportedAlgorithms the algorithms supported for the signature of the JAR
+ * @param signEncryptCapability supported signing and encryption capabilities for JAR
  * @param supportedRequestUriMethods which of the `request_uri_method` methods are supported
  */
-data class JarConfiguration(
-    val supportedAlgorithms: List<JWSAlgorithm>,
-    val supportedRequestUriMethods: SupportedRequestUriMethods = SupportedRequestUriMethods.Default,
-) {
-    init {
-        require(supportedAlgorithms.isNotEmpty()) { "JAR signing algorithms cannot be empty" }
+sealed interface JarConfiguration {
+
+    data class Supported(
+        val signEncryptCapability: JwtSigningEncryptionCapability,
+        val supportedRequestUriMethods: SupportedRequestUriMethods = SupportedRequestUriMethods.Default,
+    ) : JarConfiguration {
+        init {
+            when (signEncryptCapability) {
+                is Signing ->
+                    require(signEncryptCapability.supportedAlgorithms.isNotEmpty()) { "JAR signing algorithms cannot be empty" }
+
+                is JwtSigningEncryptionCapability.SigningAndEncryption ->
+                    require(signEncryptCapability.signing.supportedAlgorithms.isNotEmpty()) { "JAR signing algorithms cannot be empty" }
+
+                is Encryption -> error("No signing algorithms found")
+            }
+        }
     }
+
+    /**
+     * Wallet does not support accepting JWT-Secured authorization requests
+     */
+    data object NotSupported : JarConfiguration
 
     companion object {
         /**
-         * The default JAR configuration list as trusted algorithms ES256, ES384, and ES512.
+         * The default JAR configuration supports only signed JAR requests and lists as trusted algorithms: ES256, ES384, and ES512.
          * Also, both `request_uri_method` are supported.
          *
          * @see SupportedRequestUriMethods.Default
          */
-        val Default = JarConfiguration(
-            supportedAlgorithms = listOf(JWSAlgorithm.ES256, JWSAlgorithm.ES384, JWSAlgorithm.ES512),
+        val Default = Supported(
+            signEncryptCapability = Signing(
+                listOf(
+                    JWSAlgorithm.ES256,
+                    JWSAlgorithm.ES384,
+                    JWSAlgorithm.ES512,
+                ),
+            ),
             supportedRequestUriMethods = SupportedRequestUriMethods.Default,
         )
+    }
+}
+
+fun JarConfiguration.signingCapability(): Signing? = when (this) {
+    is JarConfiguration.Supported -> signEncryptCapability.signingCapability()
+    JarConfiguration.NotSupported -> null
+}
+
+fun JarConfiguration.encryptionCapability(): Encryption? = when (this) {
+    is JarConfiguration.Supported -> signEncryptCapability.encryptionCapability()
+    JarConfiguration.NotSupported -> null
+}
+
+data class RsaConfig(
+    val rcaKeySize: Int,
+    val supportedJWEAlgorithms: List<JWEAlgorithm> = JWEAlgorithm.Family.RSA.toList(),
+) {
+    init {
+        require(JWEAlgorithm.Family.RSA.containsAll(supportedJWEAlgorithms)) {
+            "Provided algorithms that are not part of RSA family"
+        }
+    }
+}
+
+data class EcConfig(
+    val ecKeyCurve: Curve,
+    val supportedJWEAlgorithms: List<JWEAlgorithm> = JWEAlgorithm.Family.ECDH_ES.toList(),
+) {
+    init {
+        require(JWEAlgorithm.Family.ECDH_ES.containsAll(supportedJWEAlgorithms)) {
+            "Provided algorithms that are not part of ECDH_ES family"
+        }
+    }
+}
+
+data class KeyGenerationConfig(
+    val ecConfig: EcConfig?,
+    val rsaConfig: RsaConfig?,
+) {
+    companion object {
+        operator fun invoke(
+            ecKeyCurve: Curve,
+            rcaKeySize: Int,
+        ): KeyGenerationConfig = KeyGenerationConfig(EcConfig(ecKeyCurve), RsaConfig(rcaKeySize))
+
+        fun ecOnly(
+            ecKeyCurve: Curve,
+            supportedJWEAlgorithms: List<JWEAlgorithm> = JWEAlgorithm.Family.ECDH_ES.toList(),
+        ): KeyGenerationConfig = KeyGenerationConfig(EcConfig(ecKeyCurve, supportedJWEAlgorithms), null)
     }
 }
 

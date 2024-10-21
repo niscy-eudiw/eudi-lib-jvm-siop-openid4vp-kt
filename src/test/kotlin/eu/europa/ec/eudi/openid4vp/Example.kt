@@ -23,7 +23,11 @@ import com.nimbusds.openid.connect.sdk.Nonce
 import com.nimbusds.openid.connect.sdk.claims.IDTokenClaimsSet
 import eu.europa.ec.eudi.openid4vp.SupportedClientIdScheme.Preregistered
 import eu.europa.ec.eudi.openid4vp.SupportedClientIdScheme.X509SanDns
-import eu.europa.ec.eudi.prex.*
+import eu.europa.ec.eudi.openid4vp.internal.response.DefaultDispatcherTest
+import eu.europa.ec.eudi.prex.DescriptorMap
+import eu.europa.ec.eudi.prex.Id
+import eu.europa.ec.eudi.prex.JsonPath
+import eu.europa.ec.eudi.prex.PresentationSubmission
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.okhttp.*
@@ -376,9 +380,10 @@ object SslSettings {
 private fun walletConfig(vararg supportedClientIdScheme: SupportedClientIdScheme) =
     SiopOpenId4VPConfig(
         vpConfiguration = VPConfiguration(vpFormats = VpFormats(VpFormat.MsoMdoc)),
-        jarmConfiguration = JarmConfiguration.Encryption(
+        jarmConfiguration = JarmConfiguration.encryptionOnly(
             supportedAlgorithms = listOf(JWEAlgorithm.ECDH_ES),
             supportedMethods = listOf(EncryptionMethod.A128CBC_HS256, EncryptionMethod.A256GCM),
+            keyGenerationConfig = KeyGenerationConfig.ecOnly(DefaultDispatcherTest.Verifier.jarmEncryptionECKeyPair.curve),
         ),
         supportedClientIdSchemes = supportedClientIdScheme,
         clock = Clock.systemDefaultZone(),

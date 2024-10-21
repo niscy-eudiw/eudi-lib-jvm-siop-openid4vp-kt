@@ -15,12 +15,13 @@
  */
 package eu.europa.ec.eudi.openid4vp.internal.request
 
-import eu.europa.ec.eudi.openid4vp.SiopOpenId4VPConfig
-import eu.europa.ec.eudi.openid4vp.encryptionConfig
-import eu.europa.ec.eudi.openid4vp.signingConfig
+import eu.europa.ec.eudi.openid4vp.*
 import kotlinx.serialization.json.*
 
 private const val REQUEST_OBJECT_SIGNING_ALG_VALUES_SUPPORTED = "request_object_signing_alg_values_supported"
+private const val REQUEST_OBJECT_ENCRYPTION_ALG_VALUES_SUPPORTED = "request_object_encryption_alg_values_supported"
+private const val REQUEST_OBJECT_ENCRYPTION_ENC_VALUES_SUPPORTED = "request_object_encryption_enc_values_supported"
+
 private const val AUTHORIZATION_SIGNING_ALG_VALUES_SUPPORTED = "authorization_signing_alg_values_supported"
 private const val AUTHORIZATION_ENCRYPTION_ALG_VALUES_SUPPORTED = "authorization_encryption_alg_values_supported"
 private const val AUTHORIZATION_ENCRYPTION_ENC_VALUES_SUPPORTED = "authorization_encryption_enc_values_supported"
@@ -36,28 +37,35 @@ internal fun walletMetaData(cfg: SiopOpenId4VPConfig): JsonObject =
         //
         // JAR related
         //
-        putJsonArray(REQUEST_OBJECT_SIGNING_ALG_VALUES_SUPPORTED) {
-            cfg.jarConfiguration.supportedAlgorithms.forEach { alg -> add(alg.name) }
+        cfg.jarConfiguration.signingCapability()?.let { signingCapability ->
+            putJsonArray(REQUEST_OBJECT_SIGNING_ALG_VALUES_SUPPORTED) {
+                signingCapability.supportedAlgorithms.forEach { alg -> add(alg.name) }
+            }
+        }
+        cfg.jarConfiguration.encryptionCapability()?.let { encryptionPreference ->
+            putJsonArray(REQUEST_OBJECT_ENCRYPTION_ALG_VALUES_SUPPORTED) {
+                encryptionPreference.supportedAlgorithms.forEach { alg -> add(alg.name) }
+            }
+            putJsonArray(REQUEST_OBJECT_ENCRYPTION_ENC_VALUES_SUPPORTED) {
+                encryptionPreference.supportedEncMethods.forEach { method -> add(method.name) }
+            }
         }
 
         //
         // JARM related
         // https://openid.net/specs/oauth-v2-jarm.html#section-4
         //
-        cfg.jarmConfiguration.encryptionConfig()?.let { encryptionConfig ->
-            putJsonArray(AUTHORIZATION_ENCRYPTION_ALG_VALUES_SUPPORTED) {
-                encryptionConfig.supportedAlgorithms.forEach { alg -> add(alg.name) }
-            }
-            putJsonArray(AUTHORIZATION_ENCRYPTION_ENC_VALUES_SUPPORTED) {
-                encryptionConfig.supportedMethods.forEach { method -> add(method.name) }
+        cfg.jarmConfiguration.signingCapability()?.let { signingCapability ->
+            putJsonArray(AUTHORIZATION_SIGNING_ALG_VALUES_SUPPORTED) {
+                signingCapability.supportedAlgorithms.forEach { alg -> add(alg.name) }
             }
         }
-        cfg.jarmConfiguration.signingConfig()?.let { signingConfig ->
-            val algs = signingConfig.signer.supportedJWSAlgorithms().orEmpty()
-            if (algs.isNotEmpty()) {
-                putJsonArray(AUTHORIZATION_SIGNING_ALG_VALUES_SUPPORTED) {
-                    algs.forEach { alg -> add(alg.name) }
-                }
+        cfg.jarmConfiguration.encryptionCapability()?.let { encryptionCapability ->
+            putJsonArray(AUTHORIZATION_ENCRYPTION_ALG_VALUES_SUPPORTED) {
+                encryptionCapability.supportedAlgorithms.forEach { alg -> add(alg.name) }
+            }
+            putJsonArray(AUTHORIZATION_ENCRYPTION_ENC_VALUES_SUPPORTED) {
+                encryptionCapability.supportedEncMethods.forEach { method -> add(method.name) }
             }
         }
 

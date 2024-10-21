@@ -19,6 +19,7 @@ import com.nimbusds.jose.EncryptionMethod
 import com.nimbusds.jose.JWEAlgorithm
 import com.nimbusds.jose.JWSAlgorithm
 import eu.europa.ec.eudi.openid4vp.*
+import eu.europa.ec.eudi.openid4vp.internal.response.DefaultDispatcherTest.Verifier
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 import kotlin.test.*
@@ -40,9 +41,10 @@ class WalletMetaDataTest {
                     ),
                 ),
             ),
-            jarmConfiguration = JarmConfiguration.Encryption(
-                supportedAlgorithms = listOf(JWEAlgorithm.ECDH_ES),
+            jarmConfiguration = JarmConfiguration.encryptionOnly(
+                supportedAlgorithms = JWEAlgorithm.Family.ECDH_ES.toList(),
                 supportedMethods = listOf(EncryptionMethod.A256GCM),
+                keyGenerationConfig = KeyGenerationConfig.ecOnly(Verifier.jarmEncryptionECKeyPair.curve),
             ),
         )
         assertMetadata(config)
@@ -71,20 +73,37 @@ private fun assertMetadata(config: SiopOpenId4VPConfig) {
         println(jsonSupport.encodeToString(it))
     }
     assertExpectedVpFormats(config.vpConfiguration.vpFormats, walletMetaData)
-    assertJarmEncryption(config.jarmConfiguration.encryptionConfig(), walletMetaData)
-    assertJarmSigning(config.jarmConfiguration.signingConfig(), walletMetaData)
+    assertJarmEncryption(config.jarmConfiguration.encryptionCapability(), walletMetaData)
+    assertJarmSigning(config.jarmConfiguration.signingCapability(), walletMetaData)
     assertClientIdScheme(config.supportedClientIdSchemes, walletMetaData)
     assertPresentationDefinitionUriSupported(config.vpConfiguration, walletMetaData)
-    assertJarSigning(config.jarConfiguration.supportedAlgorithms, walletMetaData)
+    assertJarSigning(config.jarConfiguration.signingCapability(), walletMetaData)
+    assertJarEncryption(config.jarConfiguration.encryptionCapability(), walletMetaData)
 }
 
-private fun assertJarSigning(supportedAlgorithms: List<JWSAlgorithm>, walletMetaData: JsonObject) {
-    val algs = walletMetaData["request_object_signing_alg_values_supported"]
-    assertIs<JsonArray>(algs)
-    assertContentEquals(
-        supportedAlgorithms.map { it.name },
-        algs.mapNotNull { it.jsonPrimitive.contentOrNull },
-    )
+private fun assertJarSigning(
+    signingCapability: JwtSigningEncryptionCapability.Signing?,
+    walletMetaData: JsonObject,
+) = assertSigning(walletMetaData["request_object_signing_alg_values_supported"], signingCapability)
+
+private fun assertJarmSigning(
+    signingCapability: JwtSigningEncryptionCapability.Signing?,
+    walletMetaData: JsonObject,
+) = assertSigning(walletMetaData["authorization_signing_alg_values_supported"], signingCapability)
+
+private fun assertSigning(
+    algsJsonElement: JsonElement?,
+    signingConfig: JwtSigningEncryptionCapability.Signing?,
+) {
+    if (signingConfig != null) {
+        assertIs<JsonArray>(algsJsonElement)
+        assertContentEquals(
+            signingConfig.supportedAlgorithms.map { it.name },
+            algsJsonElement.mapNotNull { it.jsonPrimitive.contentOrNull },
+        )
+    } else {
+        assertNull(algsJsonElement)
+    }
 }
 
 private fun assertPresentationDefinitionUriSupported(vpConfiguration: VPConfiguration, walletMetaData: JsonObject) {
@@ -115,44 +134,46 @@ private fun assertClientIdScheme(
     }
 }
 
-private fun assertJarmSigning(
-    signingConfig: JarmConfiguration.Signing?,
-    walletMetaData: JsonObject,
-) {
-    val algs = walletMetaData["authorization_signing_alg_values_supported"]
-    if (signingConfig != null) {
-        assertIs<JsonArray>(algs)
-        assertContentEquals(
-            signingConfig.signer.supportedJWSAlgorithms().map { it.name },
-            algs.mapNotNull { it.jsonPrimitive.contentOrNull },
-        )
-    } else {
-        assertNull(algs)
-    }
-}
-
 private fun assertJarmEncryption(
-    expectedEncryption: JarmConfiguration.Encryption?,
+    expectedEncryption: JwtSigningEncryptionCapability.Encryption?,
     walletMetaData: JsonObject,
 ) {
     val encAlgs = walletMetaData["authorization_encryption_alg_values_supported"]
-    val ms = walletMetaData["authorization_encryption_enc_values_supported"]
+    val encMethods = walletMetaData["authorization_encryption_enc_values_supported"]
 
+    assertEncryption(encAlgs, encMethods, expectedEncryption)
+}
+
+private fun assertJarEncryption(
+    expectedEncryption: JwtSigningEncryptionCapability.Encryption?,
+    walletMetaData: JsonObject,
+) {
+    val encAlgs = walletMetaData["request_object_encryption_alg_values_supported"]
+    val encMethods = walletMetaData["request_object_encryption_enc_values_supported"]
+
+    assertEncryption(encAlgs, encMethods, expectedEncryption)
+}
+
+private fun assertEncryption(
+    encAlgsJsonElement: JsonElement?,
+    encMethodsJsonElement: JsonElement?,
+    expectedEncryption: JwtSigningEncryptionCapability.Encryption?,
+) {
     if (expectedEncryption != null) {
-        assertIs<JsonArray>(encAlgs)
+        assertIs<JsonArray>(encAlgsJsonElement)
         assertContentEquals(
             expectedEncryption.supportedAlgorithms.map { it.name },
-            encAlgs.mapNotNull { it.jsonPrimitive.contentOrNull },
+            encAlgsJsonElement.mapNotNull { it.jsonPrimitive.contentOrNull },
         )
 
-        assertIs<JsonArray>(ms)
+        assertIs<JsonArray>(encMethodsJsonElement)
         assertContentEquals(
-            expectedEncryption.supportedMethods.map { it.name },
-            ms.mapNotNull { it.jsonPrimitive.contentOrNull },
+            expectedEncryption.supportedEncMethods.map { it.name },
+            encMethodsJsonElement.mapNotNull { it.jsonPrimitive.contentOrNull },
         )
     } else {
-        assertNull(encAlgs)
-        assertNull(ms)
+        assertNull(encAlgsJsonElement)
+        assertNull(encMethodsJsonElement)
     }
 }
 
