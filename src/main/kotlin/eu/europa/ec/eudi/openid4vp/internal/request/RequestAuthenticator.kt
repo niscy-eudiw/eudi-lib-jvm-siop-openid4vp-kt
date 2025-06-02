@@ -62,6 +62,7 @@ internal sealed interface AuthenticatedClient {
     data class X509SanUri(val clientId: URI, val chain: List<X509Certificate>) : AuthenticatedClient
     data class DIDClient(val client: DID, val publicKey: PublicKey) : AuthenticatedClient
     data class Attested(val clientId: OriginalClientId, val claims: VerifierAttestationClaims) : AuthenticatedClient
+    data class Origin(val clientId: OriginalClientId) : AuthenticatedClient
 }
 
 internal data class AuthenticatedRequest(
@@ -73,7 +74,22 @@ internal class RequestAuthenticator(siopOpenId4VPConfig: SiopOpenId4VPConfig, ht
     private val clientAuthenticator = ClientAuthenticator(siopOpenId4VPConfig)
     private val signatureVerifier = JarJwtSignatureVerifier(siopOpenId4VPConfig, httpClient)
 
-    suspend fun authenticate(request: ReceivedRequest): AuthenticatedRequest = coroutineScope {
+    suspend fun authenticateRequestOverDCApi(origin: String, request: ReceivedRequest): AuthenticatedRequest = coroutineScope {
+        val client = clientAuthenticator.authenticateClientOverDCApi(origin, request)
+        when (request) {
+            is ReceivedRequest.Unsigned -> {
+                AuthenticatedRequest(client, request.requestObject)
+            }
+
+            is ReceivedRequest.Signed -> {
+                val signedJwt = request.ensureSingleSignedRequest()
+                with(signatureVerifier) { verifySignature(client, signedJwt) }
+                AuthenticatedRequest(client, signedJwt.requestObject())
+            }
+        }
+    }
+
+    suspend fun authenticateRequestOverHttp(request: ReceivedRequest): AuthenticatedRequest = coroutineScope {
         val client = clientAuthenticator.authenticateClient(request)
         when (request) {
             is ReceivedRequest.Unsigned -> {
@@ -90,6 +106,13 @@ internal class RequestAuthenticator(siopOpenId4VPConfig: SiopOpenId4VPConfig, ht
 }
 
 internal class ClientAuthenticator(private val siopOpenId4VPConfig: SiopOpenId4VPConfig) {
+
+    suspend fun authenticateClientOverDCApi(origin: String, request: ReceivedRequest): AuthenticatedClient {
+        // TODO: Implement client authentication over DC API.
+
+        return AuthenticatedClient.Origin(origin)
+    }
+
     suspend fun authenticateClient(request: ReceivedRequest): AuthenticatedClient {
         val requestObject = when (request) {
             is ReceivedRequest.Signed -> {
@@ -314,6 +337,9 @@ private class JarJwtSignatureVerifier(
 
             is AuthenticatedClient.Attested ->
                 JWSKeySelector<SecurityContext> { _, _ -> listOf(client.claims.verifierPubJwk.toPublicKey()) }
+
+            is AuthenticatedClient.Origin ->
+                throw RequestValidationError.UnsupportedClientIdScheme.asException()
         }
 
     @Throws(AuthorizationRequestException::class)
@@ -376,6 +402,7 @@ internal fun SignedJWT.requestObject(): UnvalidatedRequestObject {
             idTokenType = getStringClaim("id_token_type"),
             transactionData = getStringListClaim(OpenId4VPSpec.TRANSACTION_DATA),
             verifierAttestations = getListClaim("verifier_attestations")?.asJsonArray(),
+            expectedOrigins = getStringListClaim("expected_origins"),
         )
     }
 }

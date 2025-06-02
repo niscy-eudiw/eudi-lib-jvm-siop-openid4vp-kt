@@ -47,6 +47,7 @@ sealed interface Client : Serializable {
     data class X509SanUri(val clientId: URI, val cert: X509Certificate) : Client
     data class DIDClient(val clientId: URI) : Client
     data class Attested(val clientId: OriginalClientId) : Client
+    data class Origin(val clientId: OriginalClientId) : Client
 
     /**
      * The id of the client prefixed with the client id scheme.
@@ -59,6 +60,7 @@ sealed interface Client : Serializable {
             is X509SanUri -> VerifierId(ClientIdScheme.X509_SAN_URI, clientId.toString())
             is DIDClient -> VerifierId(ClientIdScheme.DID, clientId.toString())
             is Attested -> VerifierId(ClientIdScheme.VERIFIER_ATTESTATION, clientId)
+            is Origin -> VerifierId(ClientIdScheme.ORIGIN, clientId)
         }
 }
 
@@ -86,6 +88,7 @@ fun Client.legalName(legalName: X509Certificate.() -> String? = X509Certificate:
         is X509SanUri -> cert.legalName()
         is DIDClient -> null
         is Attested -> null
+        is Origin -> null
     }
 }
 
@@ -519,7 +522,7 @@ fun <T> AuthorizationRequestError.asFailure(): Result<T> =
     Result.failure(asException())
 
 /**
- * The outcome of [validating and resolving][AuthorizationRequestResolver.resolveRequestUri]
+ * The outcome of [validating and resolving][AuthorizationRequestOverHttpResolver.resolveRequestUri]
  * an authorization request.
  */
 sealed interface Resolution {
@@ -563,12 +566,23 @@ data class ErrorDispatchDetails(
  * fetches parts of the authorization request which are provided by reference)
  *
  */
-fun interface AuthorizationRequestResolver {
+fun interface AuthorizationRequestOverHttpResolver {
 
     /**
      * Tries to validate and request the provided [uri] into a [ResolvedRequestObject].
      */
     suspend fun resolveRequestUri(uri: String): Resolution
+}
+
+fun interface AuthorizationRequestOverDCApiResolver {
+
+    /**
+     * Tries to validate an authorization request received via the Digital Credential API channel into a [ResolvedRequestObject].
+     *
+     * @param origin The origin of the request
+     * @param requestData The request data as a JsonObject
+     */
+    suspend fun resolveRequestObject(origin: String, requestData: JsonObject): Resolution
 }
 
 sealed interface PresentationQuery {

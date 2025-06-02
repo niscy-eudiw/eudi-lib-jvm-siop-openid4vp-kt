@@ -114,6 +114,12 @@ enum class ClientIdScheme {
      */
     VERIFIER_ATTESTATION,
 
+    /**
+     * This scheme is intended to be used only when an authorization is performed over the DC API channel.
+     * It is not a scheme accepted in requests and is used to set the audience of the Credential Presentation response.
+     */
+    ORIGIN,
+
     ;
 
     fun value(): String = when (this) {
@@ -124,6 +130,7 @@ enum class ClientIdScheme {
         X509_SAN_URI -> OpenId4VPSpec.CLIENT_ID_SCHEME_X509_SAN_URI
         X509_SAN_DNS -> OpenId4VPSpec.CLIENT_ID_SCHEME_X509_SAN_DNS
         VERIFIER_ATTESTATION -> OpenId4VPSpec.CLIENT_ID_SCHEME_VERIFIER_ATTESTATION
+        ORIGIN -> OpenId4VPSpec.CLIENT_ID_SCHEME_ORIGIN
     }
 
     companion object {
@@ -135,6 +142,7 @@ enum class ClientIdScheme {
             OpenId4VPSpec.CLIENT_ID_SCHEME_X509_SAN_URI -> X509_SAN_URI
             OpenId4VPSpec.CLIENT_ID_SCHEME_X509_SAN_DNS -> X509_SAN_DNS
             OpenId4VPSpec.CLIENT_ID_SCHEME_VERIFIER_ATTESTATION -> VERIFIER_ATTESTATION
+            OpenId4VPSpec.CLIENT_ID_SCHEME_ORIGIN -> ORIGIN
             else -> null
         }
     }
@@ -160,6 +168,7 @@ data class VerifierId(
             ClientIdScheme.X509_SAN_URI -> OpenId4VPSpec.CLIENT_ID_SCHEME_X509_SAN_URI
             ClientIdScheme.X509_SAN_DNS -> OpenId4VPSpec.CLIENT_ID_SCHEME_X509_SAN_DNS
             ClientIdScheme.VERIFIER_ATTESTATION -> OpenId4VPSpec.CLIENT_ID_SCHEME_VERIFIER_ATTESTATION
+            ClientIdScheme.ORIGIN -> OpenId4VPSpec.CLIENT_ID_SCHEME_ORIGIN
             else -> null
         }
 
@@ -192,6 +201,7 @@ data class VerifierId(
                     ClientIdScheme.X509_SAN_URI -> VerifierId(scheme, originalClientId)
                     ClientIdScheme.X509_SAN_DNS -> VerifierId(scheme, originalClientId)
                     ClientIdScheme.VERIFIER_ATTESTATION -> VerifierId(scheme, originalClientId)
+                    ClientIdScheme.ORIGIN -> VerifierId(scheme, originalClientId)
                 }
             }
         }
@@ -218,6 +228,14 @@ sealed interface ResponseMode : Serializable {
     data class FragmentJwt(val redirectUri: URI) : ResponseMode
     data class DirectPost(val responseURI: URL) : ResponseMode
     data class DirectPostJwt(val responseURI: URL) : ResponseMode
+
+    data object DCApi : ResponseMode {
+        private fun readResolve(): Any = DCApi
+    }
+
+    data object DCApiJwt : ResponseMode {
+        private fun readResolve(): Any = DCApiJwt
+    }
 }
 
 typealias Jwt = String

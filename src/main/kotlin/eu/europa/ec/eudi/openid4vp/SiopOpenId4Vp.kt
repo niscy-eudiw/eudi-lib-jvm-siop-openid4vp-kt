@@ -15,8 +15,8 @@
  */
 package eu.europa.ec.eudi.openid4vp
 
-import eu.europa.ec.eudi.openid4vp.internal.request.DefaultAuthorizationRequestResolver
-import eu.europa.ec.eudi.openid4vp.internal.response.DefaultDispatcher
+import eu.europa.ec.eudi.openid4vp.internal.request.DefaultRequestResolverOverHttp
+import eu.europa.ec.eudi.openid4vp.internal.response.DefaultDispatcherOverHttp
 
 /**
  * An interface providing support for handling an OAUTH2 request that represents
@@ -26,10 +26,10 @@ import eu.europa.ec.eudi.openid4vp.internal.response.DefaultDispatcher
  *
  * To obtain an instance of [SiopOpenId4Vp], method [invoke] can be used.
  *
- * @see AuthorizationRequestResolver
- * @see Dispatcher
+ * @see AuthorizationRequestOverHttpResolver
+ * @see DispatcherOverHttp
  */
-interface SiopOpenId4Vp : AuthorizationRequestResolver, Dispatcher, ErrorDispatcher {
+interface SiopOpenId4Vp : AuthorizationRequestOverHttpResolver, DispatcherOverHttp, ErrorDispatcher {
 
     companion object {
 
@@ -47,11 +47,11 @@ interface SiopOpenId4Vp : AuthorizationRequestResolver, Dispatcher, ErrorDispatc
             siopOpenId4VPConfig: SiopOpenId4VPConfig,
             httpClientFactory: KtorHttpClientFactory = DefaultHttpClientFactory,
         ): SiopOpenId4Vp {
-            val requestResolver = DefaultAuthorizationRequestResolver(siopOpenId4VPConfig, httpClientFactory)
-            val dispatcher = DefaultDispatcher(siopOpenId4VPConfig, httpClientFactory)
+            val requestResolver = DefaultRequestResolverOverHttp(siopOpenId4VPConfig, httpClientFactory)
+            val dispatcher = DefaultDispatcherOverHttp(siopOpenId4VPConfig, httpClientFactory)
             return object :
-                AuthorizationRequestResolver by requestResolver,
-                Dispatcher by dispatcher,
+                AuthorizationRequestOverHttpResolver by requestResolver,
+                DispatcherOverHttp by dispatcher,
                 ErrorDispatcher by dispatcher,
                 SiopOpenId4Vp {}
         }

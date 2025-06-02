@@ -81,6 +81,8 @@ internal fun ResponseMode.isJarm() = when (this) {
     is ResponseMode.FragmentJwt -> true
     is ResponseMode.Query -> false
     is ResponseMode.QueryJwt -> true
+    ResponseMode.DCApi -> false
+    ResponseMode.DCApiJwt -> true
 }
 
 private fun authSgnRespAlg(unvalidated: UnvalidatedClientMetaData, responseMode: ResponseMode): JWSAlgorithm? {

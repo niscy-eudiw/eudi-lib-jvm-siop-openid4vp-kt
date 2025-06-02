@@ -15,7 +15,7 @@
  */
 package eu.europa.ec.eudi.openid4vp
 
-import eu.europa.ec.eudi.openid4vp.ResolvedRequestObject.*
+import kotlinx.serialization.json.JsonObject
 import java.io.Serializable
 import java.net.URI
 
@@ -39,7 +39,7 @@ sealed interface Consensus : Serializable {
      */
     sealed interface PositiveConsensus : Consensus {
         /**
-         * In response to a [SiopAuthentication]
+         * In response to a [eu.europa.ec.eudi.openid4vp.ResolvedRequestObject.SiopAuthentication]
          * Holder/Wallet provides a [idToken] JWT
          *
          * @param idToken The id_token produced by the wallet
@@ -49,7 +49,7 @@ sealed interface Consensus : Serializable {
         ) : PositiveConsensus
 
         /**
-         * In response to a [OpenId4VPAuthorization] where the
+         * In response to a [eu.europa.ec.eudi.openid4vp.ResolvedRequestObject.OpenId4VPAuthorization] where the
          * wallet has claims that fulfill Verifier's presentation definition
          * and holder has chosen the claims to include
          * @param vpContent the VpContent to be included in the authorization response
@@ -59,7 +59,7 @@ sealed interface Consensus : Serializable {
         ) : PositiveConsensus
 
         /**
-         * In response to a [SiopOpenId4VPAuthentication]
+         * In response to a [eu.europa.ec.eudi.openid4vp.ResolvedRequestObject.SiopOpenId4VPAuthentication]
          *
          * @param idToken The id_token produced by the wallet
          * @param vpContent the VpContent to be included in the authorization response
@@ -104,9 +104,9 @@ sealed interface DispatchOutcome : Serializable {
 
 /**
  * This interface assembles an appropriate authorization response given a [request][ResolvedRequestObject]
- * and holder's [consensus][Consensus] and then dispatches it to the verifier
+ * and holder's [consensus][Consensus] and then dispatches it to the verifier over HTTP channel
  */
-interface Dispatcher {
+interface DispatcherOverHttp {
 
     /**
      * Assembles an appropriate authorization response given a [request][request]
@@ -137,6 +137,7 @@ interface Dispatcher {
             is ResponseMode.QueryJwt -> encodeRedirectURI(request, consensus, encryptionParameters)
             is ResponseMode.Fragment -> encodeRedirectURI(request, consensus, null)
             is ResponseMode.FragmentJwt -> encodeRedirectURI(request, consensus, encryptionParameters)
+            else -> error("Unsupported response mode: ${request.responseMode} for dispatching over HTTP")
         }
 
     /**
@@ -176,4 +177,17 @@ interface Dispatcher {
         consensus: Consensus,
         encryptionParameters: EncryptionParameters? = null,
     ): DispatchOutcome.RedirectURI
+}
+
+/**
+ * Given a [request][ResolvedRequestObject] send over DC API chanel and holder's [consensus][Consensus] this interface
+ * assembles an appropriate authorization response.
+ */
+interface DispatcherOverDCApi {
+
+    suspend fun assembleResponse(
+        request: ResolvedRequestObject,
+        consensus: Consensus,
+        encryptionParameters: EncryptionParameters?,
+    ): JsonObject
 }
