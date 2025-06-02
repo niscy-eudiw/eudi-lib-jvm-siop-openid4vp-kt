@@ -30,6 +30,7 @@ object OpenId4VPSpec {
     const val CLIENT_ID_SCHEME_X509_SAN_URI = "x509_san_uri"
     const val CLIENT_ID_SCHEME_X509_SAN_DNS = "x509_san_dns"
     const val CLIENT_ID_SCHEME_VERIFIER_ATTESTATION = "verifier_attestation"
+    const val CLIENT_ID_SCHEME_ORIGIN = "origin"
 
     const val AUTHORIZATION_REQUEST_OBJECT_TYPE = "oauth-authz-req+jwt"
 
@@ -37,6 +38,12 @@ object OpenId4VPSpec {
     const val RM_DIRECT_POST_JWT: String = "direct_post.jwt"
 
     const val VP_TOKEN: String = "vp_token"
+    const val PRESENTATION_SUBMISSION: String = "presentation_submission"
+
+    const val STATE = "state"
+    const val ID_TOKEN = "id_token"
+    const val ERROR = "error"
+    const val ERROR_DESCRIPTION = "error_description"
 
     const val WALLET_NONCE: String = "wallet_nonce"
     const val WALLET_METADATA: String = "wallet_metadata"

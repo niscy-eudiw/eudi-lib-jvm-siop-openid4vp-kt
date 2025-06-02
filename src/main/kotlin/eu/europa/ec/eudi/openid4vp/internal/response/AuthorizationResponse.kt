@@ -16,6 +16,12 @@
 package eu.europa.ec.eudi.openid4vp.internal.response
 
 import eu.europa.ec.eudi.openid4vp.*
+import eu.europa.ec.eudi.openid4vp.VpContent.DCQL
+import eu.europa.ec.eudi.openid4vp.VpContent.PresentationExchange
+import eu.europa.ec.eudi.openid4vp.internal.response.AuthorizationResponse.*
+import eu.europa.ec.eudi.prex.PresentationSubmission
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.io.Serializable
 import java.net.URI
 import java.net.URL
@@ -111,6 +117,60 @@ internal sealed interface AuthorizationResponsePayload : Serializable {
     ) : Failed
 }
 
+internal fun AuthorizationResponsePayload.asMap(): Map<String, String> {
+    fun ps(ps: PresentationSubmission) = Json.encodeToString<PresentationSubmission>(ps)
+
+    fun MutableMap<String, String>.put(vpContent: VpContent) {
+        when (vpContent) {
+            is PresentationExchange -> {
+                put(OpenId4VPSpec.VP_TOKEN, vpContent.verifiablePresentations.asParam())
+                put(OpenId4VPSpec.PRESENTATION_SUBMISSION, ps(vpContent.presentationSubmission))
+            }
+
+            is DCQL -> put(OpenId4VPSpec.VP_TOKEN, vpContent.verifiablePresentations.asParam())
+        }
+    }
+
+    return when (this) {
+        is AuthorizationResponsePayload.SiopAuthentication -> buildMap {
+            put(OpenId4VPSpec.ID_TOKEN, idToken)
+            state?.let {
+                put(OpenId4VPSpec.STATE, it)
+            }
+        }
+
+        is AuthorizationResponsePayload.OpenId4VPAuthorization -> buildMap {
+            put(vpContent)
+            state?.let {
+                put(OpenId4VPSpec.STATE, it)
+            }
+        }
+
+        is AuthorizationResponsePayload.SiopOpenId4VPAuthentication -> buildMap {
+            put(OpenId4VPSpec.ID_TOKEN, idToken)
+            put(vpContent)
+            state?.let {
+                put(OpenId4VPSpec.STATE, it)
+            }
+        }
+
+        is AuthorizationResponsePayload.InvalidRequest -> buildMap {
+            put(OpenId4VPSpec.ERROR, AuthorizationRequestErrorCode.fromError(error).code)
+            put(OpenId4VPSpec.ERROR_DESCRIPTION, "$error")
+            state?.let {
+                put(OpenId4VPSpec.STATE, it)
+            }
+        }
+
+        is AuthorizationResponsePayload.NoConsensusResponseData -> buildMap {
+            put(OpenId4VPSpec.ERROR, AuthorizationRequestErrorCode.ACCESS_DENIED.code)
+            state?.let {
+                put(OpenId4VPSpec.STATE, it)
+            }
+        }
+    }
+}
+
 /**
  * An OAUTH2 authorization response
  */
@@ -187,6 +247,33 @@ internal sealed interface AuthorizationResponse : Serializable {
         val data: AuthorizationResponsePayload,
         val jarmRequirement: JarmRequirement,
     ) : AuthorizationResponse
+
+    data class DCApi(
+        val data: AuthorizationResponsePayload,
+    ) : AuthorizationResponse {
+        init {
+            require(
+                data is AuthorizationResponsePayload.Failed ||
+                    data is AuthorizationResponsePayload.OpenId4VPAuthorization,
+            ) {
+                "Response payload in DC API must be either Failed or OpenId4VPAuthorization, but was ${data::class.simpleName} instead"
+            }
+        }
+    }
+
+    data class DCApiJwt(
+        val data: AuthorizationResponsePayload,
+        val jarmRequirement: JarmRequirement,
+    ) : AuthorizationResponse {
+        init {
+            require(
+                data is AuthorizationResponsePayload.Failed ||
+                    data is AuthorizationResponsePayload.OpenId4VPAuthorization,
+            ) {
+                "Response payload in DC API must be either Failed or OpenId4VPAuthorization, but was ${data::class.simpleName} instead"
+            }
+        }
+    }
 }
 
 internal fun ResolvedRequestObject.responseWith(
@@ -200,10 +287,10 @@ internal fun ResolvedRequestObject.responseWith(
 private fun requireCompatibleVpContent(presentationQuery: PresentationQuery, vpContent: VpContent) =
     when (presentationQuery) {
         is PresentationQuery.ByPresentationDefinition ->
-            require(vpContent is VpContent.PresentationExchange) { "PresentationExchange expected" }
+            require(vpContent is PresentationExchange) { "PresentationExchange expected" }
 
         is PresentationQuery.ByDigitalCredentialsQuery ->
-            require(vpContent is VpContent.DCQL) { "DCQL expected" }
+            require(vpContent is DCQL) { "DCQL expected" }
     }
 
 private fun ResolvedRequestObject.responsePayload(
@@ -263,11 +350,13 @@ private fun ResolvedRequestObject.responseWith(
     fun jarmOption() = checkNotNull(jarmRequirement)
 
     return when (val mode = responseMode) {
-        is ResponseMode.DirectPost -> AuthorizationResponse.DirectPost(mode.responseURI, data)
-        is ResponseMode.DirectPostJwt -> AuthorizationResponse.DirectPostJwt(mode.responseURI, data, jarmOption())
-        is ResponseMode.Fragment -> AuthorizationResponse.Fragment(mode.redirectUri, data)
-        is ResponseMode.FragmentJwt -> AuthorizationResponse.FragmentJwt(mode.redirectUri, data, jarmOption())
-        is ResponseMode.Query -> AuthorizationResponse.Query(mode.redirectUri, data)
-        is ResponseMode.QueryJwt -> AuthorizationResponse.QueryJwt(mode.redirectUri, data, jarmOption())
+        is ResponseMode.DirectPost -> DirectPost(mode.responseURI, data)
+        is ResponseMode.DirectPostJwt -> DirectPostJwt(mode.responseURI, data, jarmOption())
+        is ResponseMode.Fragment -> Fragment(mode.redirectUri, data)
+        is ResponseMode.FragmentJwt -> FragmentJwt(mode.redirectUri, data, jarmOption())
+        is ResponseMode.Query -> Query(mode.redirectUri, data)
+        is ResponseMode.QueryJwt -> QueryJwt(mode.redirectUri, data, jarmOption())
+        ResponseMode.DCApi -> DCApi(data)
+        ResponseMode.DCApiJwt -> DCApiJwt(data, jarmOption())
     }
 }

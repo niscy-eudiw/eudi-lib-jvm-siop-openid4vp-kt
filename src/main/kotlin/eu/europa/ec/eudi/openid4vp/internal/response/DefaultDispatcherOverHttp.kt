@@ -16,11 +16,8 @@
 package eu.europa.ec.eudi.openid4vp.internal.response
 
 import eu.europa.ec.eudi.openid4vp.*
-import eu.europa.ec.eudi.openid4vp.VpContent.DCQL
-import eu.europa.ec.eudi.openid4vp.VpContent.PresentationExchange
 import eu.europa.ec.eudi.openid4vp.dcql.QueryId
 import eu.europa.ec.eudi.openid4vp.internal.response.AuthorizationResponse.*
-import eu.europa.ec.eudi.prex.PresentationSubmission
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
@@ -33,15 +30,15 @@ import java.net.URI
 import java.net.URL
 
 /**
- * Default implementation of [Dispatcher]
+ * Default implementation of [DispatcherOverHttp]
  *
  * @param siopOpenId4VPConfig the wallet configuration
  * @param httpClientFactory factory to obtain [HttpClient]
  */
-internal class DefaultDispatcher(
+internal class DefaultDispatcherOverHttp(
     private val siopOpenId4VPConfig: SiopOpenId4VPConfig,
     private val httpClientFactory: KtorHttpClientFactory,
-) : Dispatcher, ErrorDispatcher {
+) : DispatcherOverHttp, ErrorDispatcher {
 
     override suspend fun post(
         request: ResolvedRequestObject,
@@ -154,7 +151,7 @@ internal class DefaultDispatcher(
 internal fun Query.encodeRedirectURI(): URI =
     URLBuilder(redirectUri.toString()).apply {
         parameters.apply {
-            DirectPostForm.of(data).forEach { (key, value) ->
+            data.asMap().forEach { (key, value) ->
                 append(key, value)
             }
         }
@@ -168,7 +165,7 @@ internal fun QueryJwt.encodeRedirectURI(siopOpenId4VPConfig: SiopOpenId4VPConfig
 
 internal fun Fragment.encodeRedirectURI(): URI =
     URLBuilder(redirectUri.toString()).apply {
-        fragment = DirectPostForm.of(data)
+        fragment = data.asMap()
             .map { (key, value) ->
                 "$key=$value"
             }.joinToString("&")
@@ -189,74 +186,12 @@ internal fun FragmentJwt.encodeRedirectURI(siopOpenId4VPConfig: SiopOpenId4VPCon
  * HTTP form
  */
 internal object DirectPostForm {
-
-    private const val PRESENTATION_SUBMISSION_FORM_PARAM = "presentation_submission"
-    private const val VP_TOKEN_FORM_PARAM = "vp_token"
-    private const val STATE_FORM_PARAM = "state"
-    private const val ID_TOKEN_FORM_PARAM = "id_token"
-    private const val ERROR_FORM_PARAM = "error"
-    private const val ERROR_DESCRIPTION_FORM_PARAM = "error_description"
-
     fun parametersOf(p: AuthorizationResponsePayload): Parameters =
-        of(p).let { form ->
+        p.asMap().let { map ->
             parameters {
-                form.entries.forEach { (name, value) -> append(name, value) }
+                map.entries.forEach { (name, value) -> append(name, value) }
             }
         }
-
-    fun of(p: AuthorizationResponsePayload): Map<String, String> {
-        fun ps(ps: PresentationSubmission) = Json.encodeToString<PresentationSubmission>(ps)
-
-        fun MutableMap<String, String>.put(vpContent: VpContent) {
-            when (vpContent) {
-                is PresentationExchange -> {
-                    put(VP_TOKEN_FORM_PARAM, vpContent.verifiablePresentations.asParam())
-                    put(PRESENTATION_SUBMISSION_FORM_PARAM, ps(vpContent.presentationSubmission))
-                }
-
-                is DCQL -> put(VP_TOKEN_FORM_PARAM, vpContent.verifiablePresentations.asParam())
-            }
-        }
-
-        return when (p) {
-            is AuthorizationResponsePayload.SiopAuthentication -> buildMap {
-                put(ID_TOKEN_FORM_PARAM, p.idToken)
-                p.state?.let {
-                    put(STATE_FORM_PARAM, it)
-                }
-            }
-
-            is AuthorizationResponsePayload.OpenId4VPAuthorization -> buildMap {
-                put(p.vpContent)
-                p.state?.let {
-                    put(STATE_FORM_PARAM, it)
-                }
-            }
-
-            is AuthorizationResponsePayload.SiopOpenId4VPAuthentication -> buildMap {
-                put(ID_TOKEN_FORM_PARAM, p.idToken)
-                put(p.vpContent)
-                p.state?.let {
-                    put(STATE_FORM_PARAM, it)
-                }
-            }
-
-            is AuthorizationResponsePayload.InvalidRequest -> buildMap {
-                put(ERROR_FORM_PARAM, AuthorizationRequestErrorCode.fromError(p.error).code)
-                put(ERROR_DESCRIPTION_FORM_PARAM, "${p.error}")
-                p.state?.let {
-                    put(STATE_FORM_PARAM, it)
-                }
-            }
-
-            is AuthorizationResponsePayload.NoConsensusResponseData -> buildMap {
-                put(ERROR_FORM_PARAM, AuthorizationRequestErrorCode.ACCESS_DENIED.code)
-                p.state?.let {
-                    put(STATE_FORM_PARAM, it)
-                }
-            }
-        }
-    }
 }
 
 internal fun Map<QueryId, VerifiablePresentation>.asParam(): String =

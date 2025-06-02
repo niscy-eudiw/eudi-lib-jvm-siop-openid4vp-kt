@@ -151,7 +151,7 @@ class DefaultDispatcherTest {
         )
 
         /**
-         * Creates a [Dispatcher] that mocks the behavior of a Verifier, in case of posting
+         * Creates a [DispatcherOverHttp] that mocks the behavior of a Verifier, in case of posting
          * an authorization response (direct post, or direct post jwt response_mode).
          *
          * The verifier asserts that it receives an HTTP Post, which contains [FormDataContent], having
@@ -164,7 +164,7 @@ class DefaultDispatcherTest {
         fun createDispatcherWithVerifierAsserting(
             responseBodyRedirectUri: URI? = null,
             responseParameterAssertions: (String) -> Unit,
-        ): Dispatcher {
+        ): DispatcherOverHttp {
             val mockEngine = MockEngine { request ->
                 assertEquals(HttpMethod.Post, request.method)
                 request.body.contentType?.let {
@@ -195,7 +195,7 @@ class DefaultDispatcherTest {
                 }
             }
 
-            return DefaultDispatcher(config) { httpClient }
+            return DefaultDispatcherOverHttp(config) { httpClient }
         }
 
         fun String.assertIsJwtSignedByWallet(): JWTClaimsSet {
@@ -791,7 +791,7 @@ class DefaultDispatcherTest {
                     state,
                 )
 
-                val dispatcher = DefaultDispatcher(Wallet.config, { HttpClient() })
+                val dispatcher = DefaultDispatcherOverHttp(Wallet.config, { HttpClient() })
 
                 val outcome =
                     dispatcher.dispatch(
@@ -976,7 +976,7 @@ class DefaultDispatcherTest {
                     state,
                 )
 
-                val dispatcher = DefaultDispatcher(Wallet.config, { HttpClient() })
+                val dispatcher = DefaultDispatcherOverHttp(Wallet.config, { HttpClient() })
 
                 val outcome =
                     dispatcher.dispatch(

@@ -31,7 +31,8 @@ import com.nimbusds.jwt.SignedJWT
 import com.nimbusds.oauth2.sdk.id.State
 import eu.europa.ec.eudi.openid4vp.internal.base64UrlNoPadding
 import eu.europa.ec.eudi.openid4vp.internal.jsonSupport
-import eu.europa.ec.eudi.openid4vp.internal.request.DefaultAuthorizationRequestResolver
+import eu.europa.ec.eudi.openid4vp.internal.request.DefaultRequestResolverOverDCApi
+import eu.europa.ec.eudi.openid4vp.internal.request.DefaultRequestResolverOverHttp
 import eu.europa.ec.eudi.openid4vp.internal.request.UnvalidatedClientMetaData
 import eu.europa.ec.eudi.openid4vp.internal.request.VpFormatsTO
 import eu.europa.ec.eudi.prex.PresentationDefinition
@@ -145,7 +146,10 @@ class UnvalidatedRequestResolverTest {
         clock = Clock.systemDefaultZone(),
     )
 
-    private val resolver = DefaultAuthorizationRequestResolver(walletConfig, DefaultHttpClientFactory)
+    private val resolver = DefaultRequestResolverOverHttp(
+        siopOpenId4VPConfig = walletConfig,
+        httpKtorHttpClientFactory = DefaultHttpClientFactory,
+    )
 
     private val clientMetadataJwksInline =
         """ {
@@ -705,6 +709,204 @@ class UnvalidatedRequestResolverTest {
             is Resolution.Invalid -> assertIs(error, "${T::class} error expected")
             else -> fail("Success resolution found while expected Invalid")
         }
+
+    @DisplayName("when authorization request comes through DC API channel")
+    @Nested
+    inner class RequestResolutionOverDCApiTest {
+
+        private val pdQuery = readFileAsText("presentation-definition/basic_example.json")
+            .replace("\r\n", "")
+            .replace("\r", "")
+            .replace("\n", "")
+            .replace("  ", "")
+
+        private val resolver = DefaultRequestResolverOverDCApi(
+            siopOpenId4VPConfig = walletConfig,
+            httpKtorHttpClientFactory = DefaultHttpClientFactory,
+        )
+
+        private val clientMetadata =
+            """ {
+                 "jwks": $jwkSetJO,
+                 "vp_formats": {
+                     "vc+sd-jwt": {
+                         "sd-jwt_alg_values": ["RS256", "ES512", "ES256", "ES384"],
+                         "kb-jwt_alg_values": ["RS256", "ES512", "ES384"]
+                     }
+                 }    
+               }
+            """.trimIndent()
+
+        @Test
+        fun `nonce is mandatory to exist`() = runTest {
+            val authRequest = """ 
+              { 
+                "response_mode" : "dc_api",                
+                "presentation_definition" : $pdQuery, 
+                "client_metadata" : $clientMetadata
+              }
+            """.trimIndent()
+
+            val requestData = jsonSupport.decodeFromString<JsonObject>(authRequest)
+
+            try {
+                resolver.resolveRequestObject("test_origin", requestData)
+                fail("Missing nonce should raise an error")
+            } catch (ex: MissingFieldException) {
+                ex.message!!.contains("Field 'nonce' is required")
+            }
+        }
+
+        @Test
+        fun `response_mode must be dc_api or dc_api jwt`() = runTest {
+            val authRequest = """ 
+              { 
+                "response_mode" : "fragment",
+                "nonce" : "n-0S6_WzA2Mj",
+                "presentation_definition" : $pdQuery, 
+                "client_metadata" : $clientMetadata
+              }
+            """.trimIndent()
+
+            val requestData = jsonSupport.decodeFromString<JsonObject>(authRequest)
+
+            val resolution = resolver.resolveRequestObject("test_origin", requestData)
+            val invalid = resolution.validateInvalid<RequestValidationError.UnsupportedResponseMode>()
+            assertEquals("fragment", invalid.value)
+        }
+
+        @Test
+        fun `response_type is ignored if provided in request`() = runTest {
+            val authRequest = """ 
+              {            
+                "response_type" : "id_token",
+                "response_mode" : "dc_api",
+                "nonce" : "n-0S6_WzA2Mj",
+                "presentation_definition" : $pdQuery, 
+                "client_metadata" : $clientMetadata
+              }
+            """.trimIndent()
+
+            val requestData = jsonSupport.decodeFromString<JsonObject>(authRequest)
+
+            val resolution = resolver.resolveRequestObject("test_origin", requestData)
+            val request = resolution.validateSuccess<ResolvedRequestObject.OpenId4VPAuthorization>()
+            assertIs<Client.Origin>(request.client)
+            assertEquals("test_origin", request.client.clientId)
+        }
+
+        @Test
+        fun `and no presentation query passed resolution fails`() = runTest {
+            val authRequest = """ 
+              {
+                "response_mode" : "dc_api",
+                "nonce" : "n-0S6_WzA2Mj",                
+                "client_metadata" : $clientMetadata
+              }
+            """.trimIndent()
+
+            val requestData = jsonSupport.decodeFromString<JsonObject>(authRequest)
+
+            val resolution = resolver.resolveRequestObject("test_origin", requestData)
+            resolution.validateInvalid<RequestValidationError.MissingQuerySource>()
+        }
+
+        @Test
+        fun `if response_mode is dc_api jwt client metadata must be included in request`() = runTest {
+            val authRequest = """ 
+              {
+                "response_mode" : "dc_api.jwt",
+                "nonce" : "n-0S6_WzA2Mj",    
+                "presentation_definition" : $pdQuery
+              }
+            """.trimIndent()
+
+            val requestData = jsonSupport.decodeFromString<JsonObject>(authRequest)
+
+            val resolution = resolver.resolveRequestObject("test_origin", requestData)
+            val invalid = resolution.validateInvalid<RequestValidationError.InvalidClientMetaData>()
+            assertEquals("Missing client metadata", invalid.cause)
+        }
+
+        @Test
+        fun `client_id is ignored if provided in request`() = runTest {
+            val authRequest = """ 
+              {            
+                "client_id" : "client_id",
+                "response_mode" : "dc_api",
+                "nonce" : "n-0S6_WzA2Mj",
+                "presentation_definition" : $pdQuery, 
+                "client_metadata" : $clientMetadata
+              }
+            """.trimIndent()
+
+            val requestData = jsonSupport.decodeFromString<JsonObject>(authRequest)
+
+            val resolution = resolver.resolveRequestObject("test_origin", requestData)
+            val request = resolution.validateSuccess<ResolvedRequestObject.OpenId4VPAuthorization>()
+            assertIs<Client.Origin>(request.client)
+            assertEquals("test_origin", request.client.clientId)
+        }
+
+        @Test
+        fun `verifier attestations are parsed correctly`() = runTest {
+            val authRequest = """ 
+              {                 
+                "response_mode" : "dc_api",
+                "nonce" : "n-0S6_WzA2Mj",
+                "presentation_definition" : $pdQuery, 
+                "client_metadata" : $clientMetadata,
+                "verifier_attestations" : [{
+                    "format": "jwt",
+                    "data": "attestation_data"
+                }, {
+                    "format": "jwt",
+                    "data": "attestation_data_1"
+                }]
+              }
+            """.trimIndent()
+
+            val requestData = jsonSupport.decodeFromString<JsonObject>(authRequest)
+
+            val resolution = resolver.resolveRequestObject("test_origin", requestData)
+            val request = resolution.validateSuccess<ResolvedRequestObject.OpenId4VPAuthorization>()
+
+            assertNotNull(request.verifierAttestations)
+
+            val jwtAttestations = request.verifierAttestations.filterOrNull {
+                it.format == "jwt"
+            }?.value?.size
+            assertEquals(2, jwtAttestations)
+        }
+
+        @Test
+        fun `common ground vp_format is calculated correctly`() = runTest {
+            val authRequest = """ 
+              {                 
+                "response_mode" : "dc_api",
+                "nonce" : "n-0S6_WzA2Mj",
+                "presentation_definition" : $pdQuery, 
+                "client_metadata" : $clientMetadata
+              }
+            """.trimIndent()
+
+            val requestData = jsonSupport.decodeFromString<JsonObject>(authRequest)
+
+            val resolution = resolver.resolveRequestObject("test_origin", requestData)
+            val request = resolution.validateSuccess<ResolvedRequestObject.OpenId4VPAuthorization>()
+            val formats = request.vpFormats
+            val sdJwtFormat = assertNotNull(formats?.sdJwtVc)
+
+            assertTrue { sdJwtFormat.kbJwtAlgorithms.size == 2 }
+            assertTrue { sdJwtFormat.kbJwtAlgorithms.contains(JWSAlgorithm.ES512) }
+            assertTrue { sdJwtFormat.kbJwtAlgorithms.contains(JWSAlgorithm.RS256) }
+
+            assertTrue { sdJwtFormat.sdJwtAlgorithms.size == 3 }
+            assertTrue { sdJwtFormat.sdJwtAlgorithms.contains(JWSAlgorithm.ES256) }
+            assertTrue { sdJwtFormat.sdJwtAlgorithms.contains(JWSAlgorithm.ES512) }
+            assertTrue { sdJwtFormat.sdJwtAlgorithms.contains(JWSAlgorithm.RS256) }
+        }
+    }
 
     @DisplayName("when using transaction_data")
     @Nested

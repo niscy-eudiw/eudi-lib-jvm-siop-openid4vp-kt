@@ -19,6 +19,7 @@ import eu.europa.ec.eudi.openid4vp.AuthorizationRequestError
 import eu.europa.ec.eudi.openid4vp.EncryptionParameters
 import eu.europa.ec.eudi.openid4vp.ErrorDispatchDetails
 import eu.europa.ec.eudi.openid4vp.ResponseMode
+import eu.europa.ec.eudi.openid4vp.internal.response.AuthorizationResponse.*
 
 internal fun AuthorizationRequestError.responseWith(
     di: ErrorDispatchDetails,
@@ -41,11 +42,13 @@ private fun responseWith(
     fun jarmOption() = checkNotNull(di.jarmRequirement)
 
     return when (val mode = di.responseMode) {
-        is ResponseMode.DirectPost -> AuthorizationResponse.DirectPost(mode.responseURI, data)
-        is ResponseMode.DirectPostJwt -> AuthorizationResponse.DirectPostJwt(mode.responseURI, data, jarmOption())
-        is ResponseMode.Fragment -> AuthorizationResponse.Fragment(mode.redirectUri, data)
-        is ResponseMode.FragmentJwt -> AuthorizationResponse.FragmentJwt(mode.redirectUri, data, jarmOption())
-        is ResponseMode.Query -> AuthorizationResponse.Query(mode.redirectUri, data)
-        is ResponseMode.QueryJwt -> AuthorizationResponse.QueryJwt(mode.redirectUri, data, jarmOption())
+        is ResponseMode.DirectPost -> DirectPost(mode.responseURI, data)
+        is ResponseMode.DirectPostJwt -> DirectPostJwt(mode.responseURI, data, jarmOption())
+        is ResponseMode.Fragment -> Fragment(mode.redirectUri, data)
+        is ResponseMode.FragmentJwt -> FragmentJwt(mode.redirectUri, data, jarmOption())
+        is ResponseMode.Query -> Query(mode.redirectUri, data)
+        is ResponseMode.QueryJwt -> QueryJwt(mode.redirectUri, data, jarmOption())
+        ResponseMode.DCApi -> DCApi(data)
+        ResponseMode.DCApiJwt -> DCApiJwt(data, jarmOption())
     }
 }
