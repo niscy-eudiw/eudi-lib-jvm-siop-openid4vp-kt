@@ -150,6 +150,10 @@ internal enum class AuthorizationRequestErrorCode(val code: String) {
                 is UnsupportedRequestUriMethod,
                 is InvalidVerifierAttestations,
                 PresentationDefinitionByReferenceNotSupported,
+                MissingExpectedOrigins,
+                MultiSignedRequestsNotSupported,
+                NoMatchingSchemeInMultiSignedRequest,
+                UnexpectedOrigin,
                 -> INVALID_REQUEST
 
                 InvalidClientId, UnsupportedClientIdScheme -> INVALID_CLIENT

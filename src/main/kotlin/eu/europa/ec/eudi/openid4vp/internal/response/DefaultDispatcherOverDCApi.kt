@@ -33,7 +33,7 @@ internal class DefaultDispatcherOverDCApi(private val siopOpenId4VPConfig: SiopO
     ): JsonObject {
         val response = request.responseWith(consensus, encryptionParameters)
         require(response is AuthorizationResponse.DCApi || response is AuthorizationResponse.DCApiJwt) {
-            "Unsupported response type: ${response::class.simpleName} for request type: ${request::class.simpleName}"
+            "Unsupported response mode: ${response::class.simpleName} for request coming from DC API channel"
         }
         return doAssemble(response)
     }
@@ -41,7 +41,7 @@ internal class DefaultDispatcherOverDCApi(private val siopOpenId4VPConfig: SiopO
     internal fun doAssemble(response: AuthorizationResponse): JsonObject = buildJsonObject {
         when (response) {
             is AuthorizationResponse.DCApi -> {
-                response.data.asMap().entries.forEach { (key, value) -> put(key, value) }
+                response.data.asDispatchingMap().entries.forEach { (key, value) -> put(key, value) }
             }
             is AuthorizationResponse.DCApiJwt -> {
                 val jarmJwt = siopOpenId4VPConfig.jarmJwt(response.jarmRequirement, response.data)

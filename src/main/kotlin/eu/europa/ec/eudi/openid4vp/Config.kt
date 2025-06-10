@@ -496,15 +496,23 @@ sealed interface SupportedRequestUriMethods {
     }
 }
 
+sealed interface MultiSignedRequestsPolicy {
+
+    data object NotSupported : MultiSignedRequestsPolicy
+
+    data class ExpectScheme(val clientScheme: ClientIdScheme) : MultiSignedRequestsPolicy
+}
+
 /**
  * Options related to JWT-Secured authorization requests
  *
  * @param supportedAlgorithms the algorithms supported for the signature of the JAR
  * @param supportedRequestUriMethods which of the `request_uri_method` methods are supported
  */
-data class JarConfiguration(
+data class SignedRequestConfiguration(
     val supportedAlgorithms: List<JWSAlgorithm>,
     val supportedRequestUriMethods: SupportedRequestUriMethods = SupportedRequestUriMethods.Default,
+    val multiSignedRequestsPolicy: MultiSignedRequestsPolicy = MultiSignedRequestsPolicy.NotSupported,
 ) {
     init {
         require(supportedAlgorithms.isNotEmpty()) { "JAR signing algorithms cannot be empty" }
@@ -517,9 +525,10 @@ data class JarConfiguration(
          *
          * @see SupportedRequestUriMethods.Default
          */
-        val Default = JarConfiguration(
+        val Default = SignedRequestConfiguration(
             supportedAlgorithms = listOf(JWSAlgorithm.ES256, JWSAlgorithm.ES384, JWSAlgorithm.ES512),
             supportedRequestUriMethods = SupportedRequestUriMethods.Default,
+            multiSignedRequestsPolicy = MultiSignedRequestsPolicy.NotSupported,
         )
     }
 }
@@ -546,8 +555,8 @@ enum class ErrorDispatchPolicy : java.io.Serializable {
  * At minimum, a wallet configuration should define at least a [supportedClientIdSchemes]
  *
  * @param issuer an optional id for the wallet. If not provided defaults to [SelfIssued].
- * @param jarConfiguration options related to JWT Secure authorization requests.
- * If not provided, it will default to [JarConfiguration.Default]
+ * @param signedRequestConfiguration options related to JWT Secure authorization requests.
+ * If not provided, it will default to [SignedRequestConfiguration.Default]
  * @param jarmConfiguration whether wallet supports JARM. If not specified, it takes the default value
  * [JarmConfiguration.NotSupported].
  * @param vpConfiguration options about OpenId4VP.
@@ -558,7 +567,7 @@ enum class ErrorDispatchPolicy : java.io.Serializable {
  */
 data class SiopOpenId4VPConfig(
     val issuer: Issuer? = SelfIssued,
-    val jarConfiguration: JarConfiguration = JarConfiguration.Default,
+    val signedRequestConfiguration: SignedRequestConfiguration = SignedRequestConfiguration.Default,
     val jarmConfiguration: JarmConfiguration = NotSupported,
     val vpConfiguration: VPConfiguration,
     val clock: Clock = Clock.systemDefaultZone(),
@@ -568,11 +577,19 @@ data class SiopOpenId4VPConfig(
 ) {
     init {
         require(supportedClientIdSchemes.isNotEmpty()) { "At least a supported client id scheme must be provided" }
+
+        if (signedRequestConfiguration.multiSignedRequestsPolicy is MultiSignedRequestsPolicy.ExpectScheme) {
+            val multiSignedExpectedScheme = signedRequestConfiguration.multiSignedRequestsPolicy.clientScheme
+            val supportedSchemes = supportedClientIdSchemes.map { it.scheme() }
+            require(multiSignedExpectedScheme in supportedSchemes) {
+                "Wrong configuration. Multi-singed requests policy must declare a supported client id scheme."
+            }
+        }
     }
 
     constructor(
         issuer: Issuer? = SelfIssued,
-        jarConfiguration: JarConfiguration = JarConfiguration.Default,
+        signedRequestConfiguration: SignedRequestConfiguration = SignedRequestConfiguration.Default,
         jarmConfiguration: JarmConfiguration = NotSupported,
         vpConfiguration: VPConfiguration,
         clock: Clock = Clock.systemDefaultZone(),
@@ -581,7 +598,7 @@ data class SiopOpenId4VPConfig(
         vararg supportedClientIdSchemes: SupportedClientIdScheme,
     ) : this(
         issuer,
-        jarConfiguration,
+        signedRequestConfiguration,
         jarmConfiguration,
         vpConfiguration,
         clock,

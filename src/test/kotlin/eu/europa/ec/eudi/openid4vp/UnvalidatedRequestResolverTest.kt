@@ -125,7 +125,7 @@ class UnvalidatedRequestResolverTest {
             SupportedClientIdScheme.X509SanUri(::validateChain),
             SupportedClientIdScheme.RedirectUri,
         ),
-        jarConfiguration = JarConfiguration(
+        signedRequestConfiguration = SignedRequestConfiguration(
             supportedAlgorithms = listOf(JWSAlgorithm.RS256),
         ),
         vpConfiguration = VPConfiguration(
@@ -690,7 +690,7 @@ class UnvalidatedRequestResolverTest {
             for (i in chain.indices)
                 if (i > 0) chain[i - 1].verify(chain[i].publicKey)
             true
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             false
         }
     }
@@ -730,6 +730,32 @@ class UnvalidatedRequestResolverTest {
                  }    
                }
             """.trimIndent()
+
+        private fun jwtClaimsSetDCApiRequest(
+            clientId: String? = null,
+            clientMetadata: UnvalidatedClientMetaData,
+            responseMode: String? = "dc_api",
+            expectedOrigins: List<String>? = null,
+        ): JWTClaimsSet {
+            val presentationDefinition =
+                PresentationExchange.jsonParser.decodePresentationDefinition(load("request-object/eudi_pid_presentation_definition.json"))
+                    .also { println(it) }
+                    .fold(onSuccess = { it }, onFailure = { org.junit.jupiter.api.fail(it) })
+
+            return with(JWTClaimsSet.Builder()) {
+                audience("https://self-issued.me/v2")
+                issueTime(Date())
+                clientId?.let { claim("client_id", clientId) }
+                claim("response_type", "vp_token")
+                claim("nonce", "nonce")
+                claim("response_mode", responseMode)
+                claim("presentation_definition", Jackson.toJsonObject(presentationDefinition))
+                claim("state", "638JwH0b2jrhGlAZQVa50KysVazkI-YpiFcLj2DLMalJpZK6XC22vAsPqXkpwAwXzfYpK-WLc3GhHYK8lbT6rw")
+                claim("client_metadata", Jackson.toJsonObject(clientMetadata))
+                expectedOrigins?.let { claim("expected_origins", expectedOrigins) }
+                build()
+            }
+        }
 
         @Test
         fun `nonce is mandatory to exist`() = runTest {
@@ -899,6 +925,46 @@ class UnvalidatedRequestResolverTest {
             assertTrue { sdJwtFormat.sdJwtAlgorithms.contains(JWSAlgorithm.ES256) }
             assertTrue { sdJwtFormat.sdJwtAlgorithms.contains(JWSAlgorithm.ES512) }
             assertTrue { sdJwtFormat.sdJwtAlgorithms.contains(JWSAlgorithm.RS256) }
+        }
+
+        @Test
+        fun `when request is signed jwt compact form it is parsed properly`() = runTest {
+            val keyStore = KeyStore.getInstance("JKS")
+            keyStore.load(
+                load("certificates/certificates.jks"),
+                "12345".toCharArray(),
+            )
+            val clientId = "x509_san_dns:verifier.example.gr"
+            val jwtClaimsSet = jwtClaimsSetDCApiRequest(
+                clientId = clientId,
+                responseMode = "dc_api",
+                expectedOrigins = listOf("test_origin"),
+                clientMetadata = UnvalidatedClientMetaData(
+                    jwks = Json.parseToJsonElement(JWKSet(signingKey).toPublicJWKSet().toString()).jsonObject,
+                    subjectSyntaxTypesSupported = listOf(
+                        "urn:ietf:params:oauth:jwk-thumbprint",
+                        "did:example",
+                        "did:key",
+                    ),
+                    vpFormats = VpFormatsTO.make(
+                        VpFormats(msoMdoc = VpFormat.MsoMdoc.ES256),
+                    ),
+                ),
+            )
+            val typ = JOSEObjectType(OpenId4VPSpec.AUTHORIZATION_REQUEST_OBJECT_TYPE)
+            val signedJwt = createSignedRequestJwt(keyStore, jwtClaimsSet, typ)
+
+            val authRequest = """ 
+              {                 
+                "request" : "$signedJwt"
+              }
+            """.trimIndent()
+
+            val requestData = jsonSupport.decodeFromString<JsonObject>(authRequest)
+
+            val resolution = resolver.resolveRequestObject("test_origin", requestData)
+            val request = resolution.validateSuccess<ResolvedRequestObject.OpenId4VPAuthorization>()
+            assertIs<Client.X509SanDns>(request.client)
         }
     }
 

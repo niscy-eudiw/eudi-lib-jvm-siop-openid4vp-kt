@@ -475,6 +475,26 @@ sealed interface RequestValidationError : AuthorizationRequestError {
         @Suppress("unused")
         private fun readResolve(): Any = PresentationDefinitionByReferenceNotSupported
     }
+
+    data object MissingExpectedOrigins : RequestValidationError {
+        @Suppress("unused")
+        private fun readResolve(): Any = MissingExpectedOrigins
+    }
+
+    data object UnexpectedOrigin : RequestValidationError {
+        @Suppress("unused")
+        private fun readResolve(): Any = UnexpectedOrigin
+    }
+
+    data object MultiSignedRequestsNotSupported : RequestValidationError {
+        @Suppress("unused")
+        private fun readResolve(): Any = MultiSignedRequestsNotSupported
+    }
+
+    data object NoMatchingSchemeInMultiSignedRequest : RequestValidationError {
+        @Suppress("unused")
+        private fun readResolve(): Any = NoMatchingSchemeInMultiSignedRequest
+    }
 }
 
 /**

@@ -503,7 +503,7 @@ private fun walletConfig(vararg supportedClientIdScheme: SupportedClientIdScheme
                 ),
             ),
         ),
-        jarConfiguration = JarConfiguration(
+        signedRequestConfiguration = SignedRequestConfiguration(
             supportedAlgorithms = JWSAlgorithm.Family.EC.toList() - JWSAlgorithm.ES256K,
             supportedRequestUriMethods = SupportedRequestUriMethods.Both(
                 SupportedRequestUriMethods.Post(
