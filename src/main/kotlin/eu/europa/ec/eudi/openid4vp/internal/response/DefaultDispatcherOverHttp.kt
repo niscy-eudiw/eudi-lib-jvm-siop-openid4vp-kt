@@ -151,7 +151,7 @@ internal class DefaultDispatcherOverHttp(
 internal fun Query.encodeRedirectURI(): URI =
     URLBuilder(redirectUri.toString()).apply {
         parameters.apply {
-            data.asMap().forEach { (key, value) ->
+            data.asDispatchingMap().forEach { (key, value) ->
                 append(key, value)
             }
         }
@@ -165,7 +165,7 @@ internal fun QueryJwt.encodeRedirectURI(siopOpenId4VPConfig: SiopOpenId4VPConfig
 
 internal fun Fragment.encodeRedirectURI(): URI =
     URLBuilder(redirectUri.toString()).apply {
-        fragment = data.asMap()
+        fragment = data.asDispatchingMap()
             .map { (key, value) ->
                 "$key=$value"
             }.joinToString("&")
@@ -187,7 +187,7 @@ internal fun FragmentJwt.encodeRedirectURI(siopOpenId4VPConfig: SiopOpenId4VPCon
  */
 internal object DirectPostForm {
     fun parametersOf(p: AuthorizationResponsePayload): Parameters =
-        p.asMap().let { map ->
+        p.asDispatchingMap().let { map ->
             parameters {
                 map.entries.forEach { (name, value) -> append(name, value) }
             }

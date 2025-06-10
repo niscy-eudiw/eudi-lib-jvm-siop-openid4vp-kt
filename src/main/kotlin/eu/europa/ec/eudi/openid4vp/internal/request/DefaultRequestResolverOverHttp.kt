@@ -167,7 +167,7 @@ internal class DefaultRequestResolverOverHttp(
             } catch (e: AuthorizationRequestException) {
                 val dispatchDetails =
                     when (siopOpenId4VPConfig.errorDispatchPolicy) {
-                        ErrorDispatchPolicy.AllClients -> dispatchDetailsOrNull(fetchedRequest, siopOpenId4VPConfig)
+                        ErrorDispatchPolicy.AllClients -> dispatchErrorDetailsOrNull(fetchedRequest, siopOpenId4VPConfig)
                         ErrorDispatchPolicy.OnlyAuthenticatedClients -> null
                     }
                 return Resolution.Invalid(e.error, dispatchDetails)
@@ -177,7 +177,7 @@ internal class DefaultRequestResolverOverHttp(
             try {
                 validateRequestObject(authenticatedRequest)
             } catch (e: AuthorizationRequestException) {
-                val dispatchDetails = dispatchDetailsOrNull(authenticatedRequest.requestObject, siopOpenId4VPConfig)
+                val dispatchDetails = dispatchErrorDetailsOrNull(authenticatedRequest.requestObject, siopOpenId4VPConfig)
                 return Resolution.Invalid(e.error, dispatchDetails)
             }
 
@@ -204,13 +204,13 @@ internal class DefaultRequestResolverOverHttp(
 /**
  * Creates an invalid resolution for errors that manifested while trying to authenticate a Client.
  */
-private fun dispatchDetailsOrNull(
+private fun dispatchErrorDetailsOrNull(
     fetchedRequest: ReceivedRequest,
     siopOpenId4VPConfig: SiopOpenId4VPConfig,
 ): ErrorDispatchDetails? =
     when (fetchedRequest) {
-        is ReceivedRequest.Signed -> fetchedRequest.toSignedJwts().firstOrNull()?.jwtClaimsSet?.dispatchDetailsOrNull()
-        is ReceivedRequest.Unsigned -> dispatchDetailsOrNull(fetchedRequest.requestObject, siopOpenId4VPConfig)
+        is ReceivedRequest.Signed -> fetchedRequest.toSignedJwts().firstOrNull()?.jwtClaimsSet?.dispatchErrorDetailsOrNull()
+        is ReceivedRequest.Unsigned -> dispatchErrorDetailsOrNull(fetchedRequest.requestObject, siopOpenId4VPConfig)
     }
 
 /**
@@ -222,7 +222,7 @@ private fun dispatchDetailsOrNull(
  * * the response mode requires JARM and we have resolved Client metadata that contain JARM parameters compatible with
  * the configuration of the Wallet
  */
-private fun dispatchDetailsOrNull(
+private fun dispatchErrorDetailsOrNull(
     unvalidatedRequest: UnvalidatedRequestObject,
     siopOpenId4VPConfig: SiopOpenId4VPConfig,
 ): ErrorDispatchDetails? {
@@ -290,7 +290,7 @@ private fun JWTClaimsSet.responseMode(): ResponseMode? =
         }
     }.getOrNull()
 
-private fun JWTClaimsSet.dispatchDetailsOrNull(): ErrorDispatchDetails? =
+private fun JWTClaimsSet.dispatchErrorDetailsOrNull(): ErrorDispatchDetails? =
     runCatching {
         responseMode()
             ?.takeIf { !it.isJarm() }

@@ -18,7 +18,9 @@ package eu.europa.ec.eudi.openid4vp
 import com.nimbusds.jose.JWSAlgorithm
 import org.junit.jupiter.api.assertDoesNotThrow
 import org.junit.jupiter.api.assertThrows
+import java.net.URI
 import kotlin.test.Test
+import kotlin.test.assertFailsWith
 
 class ConfigTests {
 
@@ -47,6 +49,32 @@ class ConfigTests {
                 VpFormat.SdJwtVc(
                     sdJwtAlgorithms = listOf(JWSAlgorithm.RS256),
                     kbJwtAlgorithms = listOf(JWSAlgorithm.RS256),
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun `if jar config for multi-signed requests is MultiSignedRequestsPolicy_ExpectScheme it must include a supported scheme`() {
+        val preRegSupportedScheme = SupportedClientIdScheme.Preregistered(
+            PreregisteredClient(
+                "Verifier",
+                "Verifier",
+                JWSAlgorithm.RS256 to JwkSetSource.ByReference(URI("http://localhost:8080/wallet/public-keys.json")),
+            ),
+        )
+        val x509SanDnsSupportedScheme = SupportedClientIdScheme.X509SanDns({ _ -> true })
+
+        assertFailsWith<IllegalArgumentException> {
+            SiopOpenId4VPConfig(
+                vpConfiguration = VPConfiguration(
+                    vpFormats = VpFormats(VpFormat.SdJwtVc.ES256, VpFormat.MsoMdoc.ES256),
+                ),
+                supportedClientIdSchemes = listOf(x509SanDnsSupportedScheme, preRegSupportedScheme),
+                signedRequestConfiguration = SignedRequestConfiguration(
+                    supportedAlgorithms = JWSAlgorithm.Family.EC.toList() - JWSAlgorithm.ES256K,
+                    supportedRequestUriMethods = SupportedRequestUriMethods.Default,
+                    multiSignedRequestsPolicy = MultiSignedRequestsPolicy.ExpectScheme(ClientIdScheme.DID),
                 ),
             )
         }

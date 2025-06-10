@@ -117,7 +117,20 @@ internal sealed interface AuthorizationResponsePayload : Serializable {
     ) : Failed
 }
 
-internal fun AuthorizationResponsePayload.asMap(): Map<String, String> {
+/**
+ * Converts the [AuthorizationResponsePayload] into a map structure suitable for dispatching.
+ *
+ * The output map contains key-value pairs representing the payload's details.
+ * Different types of [AuthorizationResponsePayload] are handled specifically:
+ * - [eu.europa.ec.eudi.openid4vp.internal.response.AuthorizationResponsePayload.SiopAuthentication] adds `id_token` and optionally `state`.
+ * - [eu.europa.ec.eudi.openid4vp.internal.response.AuthorizationResponsePayload.OpenId4VPAuthorization] adds Verifiable Presentation details and optionally `state`.
+ * - [eu.europa.ec.eudi.openid4vp.internal.response.AuthorizationResponsePayload.SiopOpenId4VPAuthentication] adds both `id_token` and Verifiable Presentation details, as well as optionally `state`.
+ * - [eu.europa.ec.eudi.openid4vp.internal.response.AuthorizationResponsePayload.InvalidRequest] adds error-related details and optionally `state`.
+ * - [eu.europa.ec.eudi.openid4vp.internal.response.AuthorizationResponsePayload.NoConsensusResponseData] adds an access-denied error code and optionally `state`.
+ *
+ * @return A map containing the serialized details of the authorization response payload.
+ */
+internal fun AuthorizationResponsePayload.asDispatchingMap(): Map<String, String> {
     fun ps(ps: PresentationSubmission) = Json.encodeToString<PresentationSubmission>(ps)
 
     fun MutableMap<String, String>.put(vpContent: VpContent) {
