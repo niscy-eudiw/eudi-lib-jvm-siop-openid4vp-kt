@@ -47,42 +47,23 @@ import java.time.Clock
 import java.util.*
 import eu.europa.ec.eudi.openid4vp.dcql.DCQL as DCQLQuery
 
-/**
- * Examples assume that you have cloned and running
- * https://github.com/eu-digital-identity-wallet/eudi-srv-web-verifier-endpoint-23220-4-kt
- */
 fun main(): Unit = runBlocking {
-    val verifierApi = URL("https://dev.verifier-backend.eudiw.dev")
+
+    val requestUri = """ 
+            openid4vp://cb?client_id=demo-verifier.wwwallet.org&request_uri=https%3A%2F%2Fdemo-verifier.wwwallet.org%2Fverification%2Frequest-object%3Fid%3D6d83a91a-4c8b-4a54-8b1d-7a3ad4ec3e36 
+    """.trimIndent().trimEnd()
+
+    val wallet = prepareWallet()
+    wallet.handle(URI(requestUri))
+}
+
+private fun prepareWallet(): Wallet {
     val walletKeyPair = SiopIdTokenBuilder.randomKey()
-    val wallet = Wallet(
+    return Wallet(
         walletKeyPair = walletKeyPair,
         holder = HolderInfo("walletHolder@foo.bar.com", "Wallet Holder"),
-        walletConfig = walletConfig(
-            Preregistered(Verifier.asPreregisteredClient(verifierApi)),
-            X509SanDns(TrustAnyX509),
-        ),
+        walletConfig = walletConfig(X509SanDns(TrustAnyX509)),
     )
-
-    suspend fun runUseCase(transaction: Transaction) = coroutineScope {
-        println("Running ${transaction.name} ...")
-        val verifier = Verifier.make(
-            verifierApi = verifierApi,
-            walletPublicKey = wallet.pubKey,
-            transaction = transaction,
-        )
-
-        when (val dispatchOutcome = wallet.handle(verifier.authorizationRequestUri)) {
-            is DispatchOutcome.RedirectURI -> error("Unexpected")
-            is DispatchOutcome.VerifierResponse.Accepted -> verifier.getWalletResponse(dispatchOutcome)
-            DispatchOutcome.VerifierResponse.Rejected -> error("Unexpected failure")
-        }
-    }
-
-    runUseCase(Transaction.SIOP)
-    runUseCase(Transaction.MsoMdocPidPresentationExchange)
-    runUseCase(Transaction.MsoMdocPidDcql)
-    runUseCase(Transaction.SdJwtVcPidPresentationExchange)
-    runUseCase(Transaction.SdJwtVcPidDcql)
 }
 
 @Serializable
@@ -504,7 +485,7 @@ private fun walletConfig(vararg supportedClientIdScheme: SupportedClientIdScheme
             ),
         ),
         jarConfiguration = JarConfiguration(
-            supportedAlgorithms = JWSAlgorithm.Family.EC.toList() - JWSAlgorithm.ES256K,
+            supportedAlgorithms = (JWSAlgorithm.Family.EC.toList() - JWSAlgorithm.ES256K) + JWSAlgorithm.RS256,
             supportedRequestUriMethods = SupportedRequestUriMethods.Both(
                 SupportedRequestUriMethods.Post(
                     jarEncryption = EncryptionRequirement.Required(
