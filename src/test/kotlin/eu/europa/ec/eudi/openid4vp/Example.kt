@@ -50,7 +50,7 @@ import eu.europa.ec.eudi.openid4vp.dcql.DCQL as DCQLQuery
 fun main(): Unit = runBlocking {
 
     val requestUri = """ 
-            openid4vp://cb?client_id=demo-verifier.wwwallet.org&request_uri=https%3A%2F%2Fdemo-verifier.wwwallet.org%2Fverification%2Frequest-object%3Fid%3D6d83a91a-4c8b-4a54-8b1d-7a3ad4ec3e36 
+            openid4vp://cb?client_id=x509_san_dns%3Ademo-verifier.wwwallet.org&request_uri=https%3A%2F%2Fdemo-verifier.wwwallet.org%2Fverification%2Frequest-object%3Fid%3Dfb13a042-4b8c-4c9e-9c58-3588b16d7cdf 
     """.trimIndent().trimEnd()
 
     val wallet = prepareWallet()
@@ -375,7 +375,7 @@ private class Wallet(
                 val format = requestedFormats.first()
                 val verifiablePresentation = when (format) {
                     "mso_mdoc" -> VerifiablePresentation.Generic(loadResource("/example/mso_mdoc_pid-deviceresponse.txt"))
-                    "vc+sd-jwt" -> prepareSdJwtVcVerifiablePresentation(request.client, request.nonce, request.transactionData)
+                    "dc+sd-jwt", "vc+sd-jwt" -> prepareSdJwtVcVerifiablePresentation(request.client, request.nonce, request.transactionData)
                     else -> error("unsupported format $format")
                 }
 
@@ -403,7 +403,7 @@ private class Wallet(
 
                 val verifiablePresentation = when (val format = credential.format.value) {
                     "mso_mdoc" -> VerifiablePresentation.Generic(loadResource("/example/mso_mdoc_pid-deviceresponse.txt"))
-                    "vc+sd-jwt" -> prepareSdJwtVcVerifiablePresentation(request.client, request.nonce, request.transactionData)
+                    "dc+sd-jwt","vc+sd-jwt" -> prepareSdJwtVcVerifiablePresentation(request.client, request.nonce, request.transactionData)
                     else -> error("unsupported format $format")
                 }
 
